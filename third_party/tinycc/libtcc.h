@@ -54,6 +54,23 @@ LIBTCCAPI void tcc_undefine_symbol(TCCState *s, const char *sym);
 /* add a file (C file, dll, object, library, ld script). Return -1 if error. */
 LIBTCCAPI int tcc_add_file(TCCState *s, const char *filename);
 
+/* [WPP PATCH]:
+ * 向 TCC 注册（基于数据的）虚拟文件
+ * > name: 虚拟文件名，建议唯一（支持绝对路径和相对路径，查找时会同时匹配两者）
+ * > data/size: 文件内容，必须保证在 TCC 使用期间有效（如字符串字面量或静态数据）
+ */
+LIBTCCAPI int tcc_add_virtual_file(TCCState *s, const char *name,
+                                   const void *data, unsigned long size);
+/* [WPP PATCH]:
+ * 向 TCC 注册（基于FD的）虚拟文件
+ * + 保存传入的 fd，在打开时再 dup 以保证零拷贝；
+ *   > 通过 take_ownership 参数控制是否由 TCC 负责关闭 fd（默认不负责）；
+ *   > size 参数用于记录虚拟文件大小，函数本身不做 fd 可用性验证
+ */
+LIBTCCAPI int tcc_add_virtual_file_fd(TCCState *s, const char *name,
+                                      int fd, unsigned long size,
+                                      int take_ownership);
+
 /* compile a string containing a C source. Return -1 if error. */
 LIBTCCAPI int tcc_compile_string(TCCState *s, const char *buf);
 

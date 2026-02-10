@@ -42,6 +42,7 @@
 #ifndef _WIN32
 # include <unistd.h>
 # include <sys/time.h>
+# include <sys/mman.h>
 # ifndef CONFIG_TCC_STATIC
 #  include <dlfcn.h>
 # endif
@@ -735,6 +736,17 @@ struct sym_attr {
 #endif
 };
 
+/* [WPP PATCH]:
+ * 虚拟文件描述注册项：用于把 SHM/FD 资源注册为可打开文件。
+ */
+typedef struct TCCVirtualFile {
+    char *name;
+    const unsigned char *data;
+    size_t size;
+    int fd;
+    unsigned char owns_fd;
+} TCCVirtualFile;
+
 struct TCCState {
     unsigned char verbose; /* if true, display some information during compilation */
     unsigned char nostdinc; /* if true, no standard headers are added */
@@ -841,6 +853,13 @@ struct TCCState {
     /* library paths */
     char **library_paths;
     int nb_library_paths;
+
+    /* [WPP PATCH]:
+     * 虚拟文件表：拦截 include/库加载，优先从虚拟文件命中
+     */
+    /* virtual files (in-memory) */
+    struct TCCVirtualFile **virtual_files;
+    int nb_virtual_files;
 
     /* crt?.o object path */
     char **crt_paths;
