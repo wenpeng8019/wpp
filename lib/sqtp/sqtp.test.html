@@ -1,0 +1,2825 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SQTP Unified Test Suite</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f8f9fa;
+      padding: 20px;
+    }
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    h1 {
+      color: #333;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      color: white;
+    }
+    .header {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .config {
+      display: flex;
+      gap: 15px;
+      align-items: center;
+      margin-top: 15px;
+      padding: 15px;
+      background: #f8f9fa;
+      border-radius: 4px;
+      flex-wrap: wrap;
+    }
+    .config label {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .config input[type="text"] {
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      flex: 1;
+      min-width: 200px;
+    }
+    .config select {
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      background: white;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    button {
+      background: #007bff;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: background 0.2s;
+    }
+    button:hover { background: #0056b3; }
+    button:disabled {
+      background: #6c757d;
+      cursor: not-allowed;
+    }
+    button.success { background: #28a745; }
+    button.success:hover { background: #1e7e34; }
+    button.danger { background: #dc3545; }
+    button.danger:hover { background: #bd2130; }
+    button.secondary {
+      background: #6c757d;
+    }
+    button.secondary:hover { background: #545b62; }
+    
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+    .stat {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+    .stat-value {
+      font-size: 32px;
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+    .stat-label {
+      color: #666;
+      font-size: 14px;
+    }
+    .stat.total .stat-value { color: #0747a6; }
+    .stat.passed .stat-value { color: #00875a; }
+    .stat.failed .stat-value { color: #de350b; }
+    .stat.running .stat-value { color: #ff8b00; }
+    
+    .test-suite {
+      background: white;
+      border-radius: 8px;
+      margin-bottom: 15px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+    .suite-header {
+      padding: 15px 20px;
+      background: #f8f9fa;
+      color: #333;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      user-select: none;
+      border-bottom: 1px solid #e9ecef;
+    }
+    .suite-header:hover {
+      background: #e9ecef;
+    }
+    .suite-title {
+      font-size: 18px;
+      font-weight: 600;
+    }
+    .suite-stats {
+      display: flex;
+      gap: 15px;
+      font-size: 14px;
+    }
+    .suite-stat {
+      font-weight: 500;
+    }
+    .suite-stat.passed {
+      color: #00875a;
+    }
+    .suite-stat.failed {
+      color: #de350b;
+    }
+    
+    .test-list {
+      display: none;
+      padding: 0;
+    }
+    .test-suite.expanded .test-list {
+      display: block;
+    }
+    
+    .test-case {
+      border-bottom: 1px solid #e9ecef;
+      padding: 15px 20px;
+      transition: background 0.2s;
+    }
+    .test-case:last-child {
+      border-bottom: none;
+    }
+    .test-case:hover {
+      background: #f8f9fa;
+    }
+    .test-case.running {
+      background: #fff3cd;
+    }
+    .test-case.passed {
+      background: #d4edda;
+    }
+    .test-case.failed {
+      background: #f8d7da;
+    }
+    .test-case.expected-error {
+      background: #fff3cd;
+    }
+    
+    .test-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .test-name {
+      font-weight: 500;
+      font-size: 15px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .test-status {
+      font-size: 12px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .test-status.pending {
+      background: #e9ecef;
+      color: #6c757d;
+    }
+    .test-status.running {
+      background: #fff3cd;
+      color: #856404;
+    }
+    .test-status.passed {
+      background: #28a745;
+      color: white;
+    }
+    .test-status.failed {
+      background: #dc3545;
+      color: white;
+    }
+    
+    .test-description {
+      color: #666;
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+    .test-code {
+      margin: 8px 0;
+      padding: 12px;
+      background: #f8f9fa;
+      border-left: 3px solid #007bff;
+      border-radius: 4px;
+    }
+    .test-code pre {
+      margin: 0;
+      font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
+      font-size: 12px;
+      color: #333;
+      line-height: 1.5;
+    }
+    .test-code code {
+      background: none;
+      padding: 0;
+    }
+    .test-duration {
+      color: #999;
+      font-size: 12px;
+    }
+    
+    .test-details {
+      margin-top: 12px;
+      padding: 12px;
+      background: #f8f9fa;
+      border-radius: 4px;
+      display: none;
+    }
+    .test-case.failed .test-details,
+    .test-case.show-details .test-details,
+    .test-case.expected-error .test-details {
+      display: block;
+    }
+    .test-case.passed .test-details {
+      background: #d4edda;
+    }
+    .test-case.failed .test-details {
+      background: #f8d7da;
+    }
+    .test-case.expected-error .test-details {
+      background: #fff3cd;
+      border-left: 3px solid #28a745;
+    }
+    
+    .test-error {
+      color: #721c24;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      white-space: pre-wrap;
+      margin-top: 8px;
+    }
+    .test-result {
+      color: #155724;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      white-space: pre-wrap;
+      margin-top: 8px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    
+    .icon {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      line-height: 16px;
+      text-align: center;
+    }
+    .icon.pending::before { content: '○'; color: #6c757d; }
+    .icon.running::before { content: '⋯'; color: #ffc107; }
+    .icon.passed::before { content: '✓'; color: #28a745; font-weight: bold; }
+    .icon.failed::before { content: '✗'; color: #dc3545; font-weight: bold; }
+    
+    .progress-bar {
+      height: 4px;
+      background: #e9ecef;
+      border-radius: 2px;
+      overflow: hidden;
+      margin-top: 10px;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #007bff, #0056b3);
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+    
+    .spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid #f3f3f3;
+      border-top: 2px solid #007bff;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+    .console {
+      background: #1e1e1e;
+      color: #d4d4d4;
+      padding: 15px;
+      border-radius: 8px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      max-height: 300px;
+      overflow-y: auto;
+      margin-top: 20px;
+      display: none;
+    }
+    .console.show { display: block; }
+    .console-line {
+      margin-bottom: 4px;
+      line-height: 1.4;
+    }
+    .console-line.error { color: #f48771; }
+    .console-line.success { color: #89d185; }
+    .console-line.info { color: #75beff; }
+    .console-line.warn { color: #dcdcaa; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>
+        SQTP Unified Test Suite
+        <span class="badge" id="library-badge" style="background: #17a2b8;">Promise</span>
+        <span id="overall-status" class="spinner" style="display:none;"></span>
+      </h1>
+      
+      <div class="config">
+        <label>
+          <strong>Library:</strong>
+          <select id="library-selector" onchange="switchLibrary()">
+            <option value="promise">XHR Promise</option>
+            <option value="callback">XHR Callback</option>
+            <option value="fetch">Fetch API</option>
+          </select>
+        </label>
+        
+        <label>
+          <input type="checkbox" id="mock-mode" checked onchange="toggleMockMode()"> 
+          <strong>Mock Mode (前端模拟)</strong>
+        </label>
+        
+        <label>Server URL:</label>
+        <input type="text" id="server-url" value="/" placeholder="/" disabled>
+        
+        <button onclick="updateConfig()" class="secondary" id="update-config-btn" disabled>更新配置</button>
+        
+        <label>
+          <input type="checkbox" id="debug-mode" checked> Debug Mode
+        </label>
+      </div>
+      
+      <div class="progress-bar">
+        <div class="progress-fill" id="progress"></div>
+      </div>
+    </div>
+    
+    <div class="stats">
+      <div class="stat total">
+        <div class="stat-value" id="stat-total">0</div>
+        <div class="stat-label">Total Tests</div>
+      </div>
+      <div class="stat passed">
+        <div class="stat-value" id="stat-passed">0</div>
+        <div class="stat-label">Passed</div>
+      </div>
+      <div class="stat failed">
+        <div class="stat-value" id="stat-failed">0</div>
+        <div class="stat-label">Failed</div>
+      </div>
+      <div class="stat running">
+        <div class="stat-value" id="stat-duration">0ms</div>
+        <div class="stat-label">Duration</div>
+      </div>
+    </div>
+    
+    <div class="controls">
+      <button onclick="runAllTests()" id="run-all-btn">▶ Run All Tests</button>
+      <button onclick="stopTests()" id="stop-btn" class="danger" disabled>⏹ Stop</button>
+      <button onclick="clearResults()" class="secondary">Clear Results</button>
+      <button onclick="toggleConsole()" class="secondary">Toggle Console</button>
+      <button onclick="showMockData()" class="secondary">View Mock Data</button>
+      <button onclick="expandAll()" class="secondary">Expand All</button>
+      <button onclick="collapseAll()" class="secondary">Collapse All</button>
+    </div>
+    
+    <div id="test-suites"></div>
+    
+    <div id="console" class="console"></div>
+  </div>
+
+  <!-- Load all three SQTP libraries -->
+  <script src="sqtp.xhr.promise.js"></script>
+  <script>
+    // Save Promise-based SQTP to a separate variable
+    const SQTPPromise = window.SQTP;
+  </script>
+  
+  <script src="sqtp.xhr.callback.js"></script>
+  <script>
+    // Save Callback-based SQTP to a separate variable
+    const SQTPCallback = window.SQTP;
+  </script>
+  
+  <script src="sqtp.fetch.js"></script>
+  <script>
+    // Save Fetch-based SQTP to a separate variable
+    const SQTPFetch = window.SQTP;
+  </script>
+
+  <script>
+    // ========================================================================
+    // Mock Server Implementation (from sqtp.fetch.test.html - most complete)
+    // ========================================================================
+    
+    const MockServer = {
+      tables: {},
+      autoIncrements: {},
+      tableMetadata: {},
+      inTransaction: false,
+      transactionBackup: null,
+      
+      reset() {
+        this.tables = {};
+        this.autoIncrements = {};
+        this.tableMetadata = {};
+        this.inTransaction = false;
+        this.transactionBackup = null;
+      },
+      
+      parseTableName(url) {
+        const match = url.match(/\/([^\/\#\?]+)$/);
+        return match ? match[1] : null;
+      },
+      
+      parseFragment(url) {
+        const match = url.match(/#(\w+)/);
+        return match ? match[1] : null;
+      },
+      
+      handleRequest(method, url, headers, body) {
+        try {
+          const fragment = this.parseFragment(url);
+          
+          log(`Mock Server: ${method} ${url}`, 'info');
+          
+          switch (method) {
+            case 'CREATE':
+              return this.handleCreate(fragment, headers, body);
+            case 'DROP':
+              return this.handleDrop(fragment, headers);
+            case 'SELECT': {
+              // Handle FROM-JOIN or FROM
+              let tableName = headers['FROM'];
+              if (!tableName && headers['FROM-JOIN']) {
+                // Extract first table from FROM-JOIN
+                const fromJoin = headers['FROM-JOIN'];
+                tableName = fromJoin.split(/\s+/)[0];
+              }
+              return this.handleSelect(tableName, headers, body);
+            }
+            case 'INSERT':
+              return this.handleInsert(headers['TABLE'], headers, body);
+            case 'UPDATE':
+              return this.handleUpdate(headers['TABLE'], headers, body);
+            case 'UPSERT':
+              return this.handleUpsert(headers['TABLE'], headers, body);
+            case 'DELETE':
+              return this.handleDelete(headers['TABLE'], headers, body);
+            case 'BEGIN':
+              return this.handleBegin();
+            case 'COMMIT':
+              return this.handleCommit();
+            case 'ROLLBACK':
+              return this.handleRollback();
+            case 'SAVEPOINT':
+              return this.handleSavepoint(headers);
+            default:
+              throw new Error(`Unsupported method: ${method}`);
+          }
+        } catch (err) {
+          return {
+            status: 500,
+            headers: {},
+            body: { error: err.message }
+          };
+        }
+      },
+      
+      handleCreate(fragment, headers, body) {
+        if (fragment === 'table') {
+          const tableName = headers['NAME'];
+          
+          if (!tableName) {
+            throw new Error('Table name required');
+          }
+          
+          if (this.tables[tableName] && !headers['IF-NOT-EXISTS']) {
+            throw new Error(`Table ${tableName} already exists`);
+          }
+          
+          if (!this.tables[tableName]) {
+            this.tables[tableName] = [];
+            this.autoIncrements[tableName] = {
+              column: headers['AUTOINC'] || null,
+              value: 0
+            };
+            
+            // Parse UNIQUE columns
+            let uniqueColumns = [];
+            if (headers['UNIQUE']) {
+              if (Array.isArray(headers['UNIQUE'])) {
+                // Multiple unique constraints
+                uniqueColumns = headers['UNIQUE'].flatMap(u => u.split(/,\s*/));
+              } else {
+                // Single unique constraint
+                uniqueColumns = headers['UNIQUE'].split(/,\s*/);
+              }
+            }
+            
+            this.tableMetadata[tableName] = {
+              uniqueColumns: uniqueColumns
+            };
+            log(`Mock: Created table ${tableName}`, 'success');
+          }
+          
+          return {
+            status: 200,
+            headers: { 'X-SQTP-Changes': '0' },
+            body: { message: 'Table created' }
+          };
+        }
+        throw new Error(`Unsupported fragment: ${fragment}`);
+      },
+      
+      handleDrop(fragment, headers) {
+        if (fragment === 'table') {
+          const tableName = headers['NAME'];
+          
+          if (!tableName) {
+            throw new Error('Table name required');
+          }
+          
+          if (!this.tables[tableName] && !headers['IF-EXISTS']) {
+            throw new Error(`Table ${tableName} does not exist`);
+          }
+          
+          if (this.tables[tableName]) {
+            delete this.tables[tableName];
+            delete this.autoIncrements[tableName];
+            delete this.tableMetadata[tableName];
+            log(`Mock: Dropped table ${tableName}`, 'success');
+          }
+          
+          return {
+            status: 200,
+            headers: { 'X-SQTP-Changes': '0' },
+            body: { message: 'Table dropped' }
+          };
+        }
+        throw new Error(`Unsupported fragment: ${fragment}`);
+      },
+      
+      handleSelect(tableName, headers, body) {
+        if (!this.tables[tableName]) {
+          throw new Error(`Table ${tableName} does not exist`);
+        }
+        
+        let data = JSON.parse(JSON.stringify(this.tables[tableName])); // Deep copy
+        
+        // Apply FROM-JOIN (handles both implicit and explicit joins)
+        if (headers['FROM-JOIN']) {
+          const fromJoinStr = headers['FROM-JOIN'];
+          
+          // Check if it's an explicit join (contains JOIN keyword)
+          if (/\bJOIN\b/i.test(fromJoinStr)) {
+            // Parse explicit join: "table1 LEFT JOIN table2 ON table1.col = table2.col"
+            const joinMatch = fromJoinStr.match(/(\w+)\s+(LEFT\s+|RIGHT\s+|INNER\s+)?JOIN\s+(\w+)\s+ON\s+(.+)/i);
+            if (joinMatch) {
+              const [, leftTable, joinType, rightTable, onClause] = joinMatch;
+              const isLeft = /LEFT/i.test(joinType || '');
+              
+              if (this.tables[rightTable]) {
+                const [leftCol, rightCol] = onClause.split('=').map(s => s.trim());
+                const newData = [];
+                
+                data.forEach(leftRow => {
+                  const matches = this.tables[rightTable].filter(rightRow => {
+                    const leftVal = this.getNestedValue(leftRow, leftCol);
+                    const rightVal = this.getNestedValue(rightRow, rightCol);
+                    return leftVal === rightVal;
+                  });
+                  
+                  if (matches.length > 0) {
+                    matches.forEach(rightRow => {
+                      const merged = { ...leftRow };
+                      // Prefix right table columns
+                      Object.keys(rightRow).forEach(key => {
+                        merged[`${rightTable}.${key}`] = rightRow[key];
+                      });
+                      newData.push(merged);
+                    });
+                  } else if (isLeft) {
+                    newData.push(leftRow);
+                  }
+                });
+                
+                data = newData;
+              }
+            }
+          } else {
+            // Implicit join (natural join/cartesian product)
+            const tables = fromJoinStr.split(/\s+/);
+            if (tables.length > 1) {
+              const rightTable = tables[1];
+              if (this.tables[rightTable]) {
+                const newData = [];
+                data.forEach(leftRow => {
+                  this.tables[rightTable].forEach(rightRow => {
+                    const merged = { ...leftRow };
+                    Object.keys(rightRow).forEach(key => {
+                      merged[`${rightTable}.${key}`] = rightRow[key];
+                    });
+                    newData.push(merged);
+                  });
+                });
+                data = newData;
+              }
+            }
+          }
+        }
+        
+        // Apply WHERE
+        if (headers['WHERE']) {
+          const conditions = Array.isArray(headers['WHERE']) ? headers['WHERE'] : [headers['WHERE']];
+          conditions.forEach(condition => {
+            data = data.filter(row => this.evaluateCondition(row, condition));
+          });
+        }
+        
+        // Apply WHERE-IN
+        if (headers['WHERE-IN'] && body) {
+          const whereInHeader = headers['WHERE-IN'];
+          if (typeof whereInHeader === 'string') {
+            // Single WHERE-IN: header is column name, body is array of values
+            if (Array.isArray(body)) {
+              data = data.filter(row => body.includes(row[whereInHeader]));
+            }
+          } else if (Array.isArray(whereInHeader)) {
+            // Multiple WHERE-IN: header is array of columns, body is object
+            whereInHeader.forEach(column => {
+              if (body[column] && Array.isArray(body[column])) {
+                data = data.filter(row => body[column].includes(row[column]));
+              }
+            });
+          }
+        }
+        
+        // Apply JOIN (simplified)
+        if (headers['JOIN'] || headers['LEFT-JOIN']) {
+          const joins = headers['JOIN'] || headers['LEFT-JOIN'];
+          const joinList = Array.isArray(joins) ? joins : [joins];
+          const isLeft = !!headers['LEFT-JOIN'];
+          
+          joinList.forEach(joinStr => {
+            const [joinTable, onClause] = joinStr.split(' ON ');
+            const [leftCol, rightCol] = onClause.trim().split(' = ');
+            
+            if (this.tables[joinTable]) {
+              const newData = [];
+              data.forEach(leftRow => {
+                const matches = this.tables[joinTable].filter(rightRow => {
+                  const leftVal = this.getNestedValue(leftRow, leftCol.trim());
+                  const rightVal = this.getNestedValue(rightRow, rightCol.trim());
+                  return leftVal === rightVal;
+                });
+                
+                if (matches.length > 0) {
+                  matches.forEach(rightRow => {
+                    newData.push({ ...leftRow, ...this.prefixKeys(rightRow, joinTable) });
+                  });
+                } else if (isLeft) {
+                  newData.push(leftRow);
+                }
+              });
+              data = newData;
+            }
+          });
+        }
+        
+        const totalRows = data.length;
+        
+        // Apply ORDER-BY
+        if (headers['ORDER-BY']) {
+          const orders = headers['ORDER-BY'].split(' ');
+          for (let i = 0; i < orders.length; i += 2) {
+            const col = orders[i];
+            const dir = orders[i + 1] || 'ASC';
+            data.sort((a, b) => {
+              // Support both direct column names and table-qualified names
+              let aVal = a[col];
+              let bVal = b[col];
+              
+              // If column not found directly, try without table prefix
+              if (aVal === undefined && col.includes('.')) {
+                const simpleCol = col.split('.')[1];
+                aVal = a[simpleCol];
+                bVal = b[simpleCol];
+              }
+              
+              const cmp = aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+              return dir === 'DESC' ? -cmp : cmp;
+            });
+          }
+        }
+        
+        // Apply OFFSET
+        if (headers['OFFSET']) {
+          data = data.slice(parseInt(headers['OFFSET']));
+        }
+        
+        // Apply LIMIT
+        if (headers['LIMIT']) {
+          data = data.slice(0, parseInt(headers['LIMIT']));
+        }
+        
+        // Apply COLUMN/COLUMNS filter
+        const columnHeader = headers['COLUMNS'] || headers['COLUMN'];
+        if (columnHeader) {
+          const columns = columnHeader.split(/,\s*/);
+          data = data.map(row => {
+            const filtered = {};
+            columns.forEach(col => {
+              col = col.trim();
+              if (col.includes('.')) {
+                // Table-qualified column name
+                filtered[col] = row[col] || row[col.split('.')[1]];
+              } else if (row.hasOwnProperty(col)) {
+                filtered[col] = row[col];
+              } else {
+                // Handle aggregates or aliases
+                filtered[col] = row[col];
+              }
+            });
+            return filtered;
+          });
+        }
+        
+        // Apply DISTINCT
+        if (headers['DISTINCT']) {
+          const seen = new Set();
+          data = data.filter(row => {
+            const key = JSON.stringify(row);
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+        }
+        
+        // Handle VIEW format
+        let responseData = data;
+        const viewFormat = headers['X-SQTP-VIEW'] || headers['VIEW'];
+        if (viewFormat === 'row') {
+          responseData = data.map(row => Object.values(row));
+        } else if (viewFormat === 'column') {
+          const columns = {};
+          if (data.length > 0) {
+            Object.keys(data[0]).forEach(key => {
+              columns[key] = data.map(row => row[key]);
+            });
+          }
+          responseData = columns;
+        }
+        
+        return {
+          status: 200,
+          headers: {
+            'X-SQTP-Total-Rows': totalRows.toString(),
+            'X-SQTP-Affected-Rows': data.length.toString()
+          },
+          body: responseData
+        };
+      },
+      
+      handleInsert(tableName, headers, body) {
+        if (!this.tables[tableName]) {
+          throw new Error(`Table ${tableName} does not exist`);
+        }
+        
+        const row = { ...body };
+        
+        // Check IF-NOT-EXISTS
+        if (headers['IF-NOT-EXISTS']) {
+          const metadata = this.tableMetadata[tableName] || { uniqueColumns: [] };
+          let exists = false;
+          
+          if (metadata.uniqueColumns.length > 0) {
+            // Check based on UNIQUE columns
+            exists = this.tables[tableName].some(r => 
+              metadata.uniqueColumns.some(col => 
+                body[col] !== undefined && r[col] === body[col]
+              )
+            );
+          } else {
+            // No unique columns defined, check all fields
+            exists = this.tables[tableName].some(r => 
+              Object.keys(body).every(key => r[key] === body[key])
+            );
+          }
+          
+          if (exists) {
+            return {
+              status: 200,
+              headers: { 'X-SQTP-Changes': '0' },
+              body: { message: 'Record already exists' }
+            };
+          }
+        }
+        
+        // Handle AUTOINC
+        const autoInc = this.autoIncrements[tableName];
+        if (autoInc.column && !row[autoInc.column]) {
+          autoInc.value++;
+          row[autoInc.column] = autoInc.value;
+        }
+        
+        this.tables[tableName].push(row);
+        
+        return {
+          status: 200,
+          headers: {
+            'X-SQTP-Changes': '1',
+            'X-SQTP-Last-Insert-Id': row[autoInc.column]?.toString() || '0'
+          },
+          body: { message: 'Record inserted' }
+        };
+      },
+      
+      handleUpdate(tableName, headers, body) {
+        if (!this.tables[tableName]) {
+          throw new Error(`Table ${tableName} does not exist`);
+        }
+        
+        let changes = 0;
+        
+        // Separate WHERE-IN columns from update data
+        const whereInColumns = headers['WHERE-IN'] 
+          ? (Array.isArray(headers['WHERE-IN']) ? headers['WHERE-IN'] : [headers['WHERE-IN']])
+          : [];
+        
+        const updateData = { ...body };
+        const whereInData = {};
+        
+        // Extract WHERE-IN values from body
+        whereInColumns.forEach(col => {
+          if (body[col] !== undefined) {
+            whereInData[col] = body[col];
+            delete updateData[col];
+          }
+        });
+        
+        this.tables[tableName] = this.tables[tableName].map(row => {
+          let shouldUpdate = false;
+          
+          // Check WHERE conditions
+          if (headers['WHERE']) {
+            const conditions = Array.isArray(headers['WHERE']) ? headers['WHERE'] : [headers['WHERE']];
+            if (conditions.includes('*')) {
+              shouldUpdate = true;
+            } else {
+              shouldUpdate = conditions.every(cond => this.evaluateCondition(row, cond));
+            }
+          } else if (Object.keys(whereInData).length > 0) {
+            // Only WHERE-IN, no WHERE clause
+            shouldUpdate = true;
+          }
+          
+          // Check WHERE-IN
+          if (shouldUpdate && Object.keys(whereInData).length > 0) {
+            for (const [column, values] of Object.entries(whereInData)) {
+              if (!values.includes(row[column])) {
+                shouldUpdate = false;
+                break;
+              }
+            }
+          }
+          
+          if (shouldUpdate) {
+            changes++;
+            return { ...row, ...updateData };
+          }
+          return row;
+        });
+        
+        return {
+          status: 200,
+          headers: { 'X-SQTP-Changes': changes.toString() },
+          body: { message: `${changes} records updated` }
+        };
+      },
+      
+      handleUpsert(tableName, headers, body) {
+        if (!this.tables[tableName]) {
+          throw new Error(`Table ${tableName} does not exist`);
+        }
+        
+        const keys = headers['KEY'] ? headers['KEY'].split(' ') : [];
+        
+        if (keys.length === 0) {
+          // No key specified, just insert
+          return this.handleInsert(tableName, headers, body);
+        }
+        
+        // Check if record exists
+        const index = this.tables[tableName].findIndex(row =>
+          keys.every(key => row[key] === body[key])
+        );
+        
+        if (index >= 0) {
+          // Update existing
+          this.tables[tableName][index] = { ...this.tables[tableName][index], ...body };
+          return {
+            status: 200,
+            headers: { 'X-SQTP-Changes': '1' },
+            body: { message: 'Record updated' }
+          };
+        } else {
+          // Insert new
+          return this.handleInsert(tableName, {}, body);
+        }
+      },
+      
+      handleDelete(tableName, headers, body) {
+        if (!this.tables[tableName]) {
+          throw new Error(`Table ${tableName} does not exist`);
+        }
+        
+        const before = this.tables[tableName].length;
+        
+        this.tables[tableName] = this.tables[tableName].filter(row => {
+          // Check WHERE conditions
+          if (headers['WHERE']) {
+            const conditions = Array.isArray(headers['WHERE']) ? headers['WHERE'] : [headers['WHERE']];
+            if (conditions.includes('*')) {
+              return false; // Delete all
+            }
+            if (conditions.some(cond => this.evaluateCondition(row, cond))) {
+              return false; // Delete this row
+            }
+          }
+          
+          // Check WHERE-IN
+          if (headers['WHERE-IN'] && body) {
+            const whereInHeader = headers['WHERE-IN'];
+            if (typeof whereInHeader === 'string') {
+              // Single WHERE-IN: header is column name, body is array of values
+              if (Array.isArray(body) && body.includes(row[whereInHeader])) {
+                return false; // Delete this row
+              }
+            } else if (Array.isArray(whereInHeader)) {
+              // Multiple WHERE-IN: header is array of columns, body is object
+              for (const column of whereInHeader) {
+                if (body[column] && Array.isArray(body[column]) && body[column].includes(row[column])) {
+                  return false; // Delete this row
+                }
+              }
+            }
+          }
+          
+          return true; // Keep this row
+        });
+        
+        const changes = before - this.tables[tableName].length;
+        
+        return {
+          status: 200,
+          headers: { 'X-SQTP-Changes': changes.toString() },
+          body: { message: `${changes} records deleted` }
+        };
+      },
+      
+      handleBegin() {
+        this.inTransaction = true;
+        this.transactionBackup = JSON.parse(JSON.stringify(this.tables));
+        return {
+          status: 200,
+          headers: {},
+          body: { message: 'Transaction started' }
+        };
+      },
+      
+      handleCommit() {
+        this.inTransaction = false;
+        this.transactionBackup = null;
+        return {
+          status: 200,
+          headers: {},
+          body: { message: 'Transaction committed' }
+        };
+      },
+      
+      handleRollback() {
+        if (this.transactionBackup) {
+          this.tables = this.transactionBackup;
+          this.transactionBackup = null;
+        }
+        this.inTransaction = false;
+        return {
+          status: 200,
+          headers: {},
+          body: { message: 'Transaction rolled back' }
+        };
+      },
+      
+      handleSavepoint(headers) {
+        // Simplified savepoint - just create another backup
+        return {
+          status: 200,
+          headers: {},
+          body: { message: 'Savepoint created' }
+        };
+      },
+      
+      evaluateCondition(row, condition) {
+        // Simple condition evaluation (e.g., "age >= 28")
+        const operators = ['>=', '<=', '!=', '=', '>', '<'];
+        
+        for (const op of operators) {
+          if (condition.includes(op)) {
+            const [left, right] = condition.split(op).map(s => s.trim());
+            const leftVal = row[left];
+            const rightVal = right.replace(/['"]/g, '');
+            
+            switch (op) {
+              case '=': return leftVal == rightVal;
+              case '!=': return leftVal != rightVal;
+              case '>': return leftVal > (isNaN(rightVal) ? rightVal : Number(rightVal));
+              case '<': return leftVal < (isNaN(rightVal) ? rightVal : Number(rightVal));
+              case '>=': return leftVal >= (isNaN(rightVal) ? rightVal : Number(rightVal));
+              case '<=': return leftVal <= (isNaN(rightVal) ? rightVal : Number(rightVal));
+            }
+          }
+        }
+        
+        // Invalid condition format
+        throw new Error(`Invalid WHERE condition: ${condition}`);
+      },
+      
+      getNestedValue(obj, path) {
+        if (path.includes('.')) {
+          const [table, field] = path.split('.');
+          return obj[table + '.' + field] || obj[field];
+        }
+        return obj[path];
+      },
+      
+      prefixKeys(obj, prefix) {
+        const result = {};
+        for (const [key, val] of Object.entries(obj)) {
+          result[prefix + '.' + key] = val;
+        }
+        return result;
+      }
+    };
+    
+    // ========================================================================
+    // Mock Implementations for XHR and Fetch
+    // ========================================================================
+    
+    // Save original implementations
+    const OriginalXHR = window.XMLHttpRequest;
+    const OriginalFetch = window.fetch.bind(window);
+    
+    // Mock XMLHttpRequest (for Promise and Callback libraries)
+    function MockXHR() {
+      this.readyState = 0;
+      this.status = 0;
+      this.statusText = '';
+      this.responseText = '';
+      this.response = null;
+      this.responseHeaders = {};
+      this.onreadystatechange = null;
+      this.onload = null;
+      this.ontimeout = null;
+      this.onerror = null;
+    }
+    
+    MockXHR.prototype.open = function(method, url, async) {
+      this.method = method;
+      this.url = url;
+      this.async = async !== false;
+      this.requestHeaders = {};
+      this.readyState = 1;
+    };
+    
+    MockXHR.prototype.setRequestHeader = function(name, value) {
+      if (this.requestHeaders[name]) {
+        if (Array.isArray(this.requestHeaders[name])) {
+          this.requestHeaders[name].push(value);
+        } else {
+          this.requestHeaders[name] = [this.requestHeaders[name], value];
+        }
+      } else {
+        this.requestHeaders[name] = value;
+      }
+    };
+    
+    MockXHR.prototype.send = function(body) {
+      const self = this;
+      setTimeout(() => {
+        try {
+          const parsedBody = body ? JSON.parse(body) : null;
+          const response = MockServer.handleRequest(
+            self.method,
+            self.url,
+            self.requestHeaders,
+            parsedBody
+          );
+          
+          self.status = response.status;
+          self.statusText = response.status === 200 ? 'OK' : 'Error';
+          self.responseText = JSON.stringify(response.body);
+          self.response = response.body;
+          self.responseHeaders = response.headers;
+          self.readyState = 4;
+          
+          if (self.onreadystatechange) {
+            self.onreadystatechange();
+          }
+          if (self.onload) {
+            self.onload();
+          }
+        } catch (err) {
+          console.error('[MockXHR] Error:', err);
+          self.status = 500;
+          self.statusText = 'Internal Server Error';
+          self.responseText = JSON.stringify({ error: err.message });
+          self.readyState = 4;
+          
+          if (self.onreadystatechange) {
+            self.onreadystatechange();
+          }
+          if (self.onerror) {
+            self.onerror();
+          }
+        }
+      }, 10); // Simulate network delay
+    };
+    
+    MockXHR.prototype.getResponseHeader = function(name) {
+      return this.responseHeaders[name] || null;
+    };
+    
+    MockXHR.prototype.getAllResponseHeaders = function() {
+      return Object.entries(this.responseHeaders)
+        .map(([key, val]) => `${key}: ${val}`)
+        .join('\r\n');
+    };
+    
+    MockXHR.prototype.abort = function() {
+      this.readyState = 0;
+    };
+    
+    // Mock fetch function (for Fetch API library)
+    function MockFetch(url, options) {
+      return new Promise((resolve, reject) => {
+        setTimeout(() => {
+          try {
+            const method = options.method || 'GET';
+            const headers = {};
+            
+            // Extract headers from Headers object or plain object
+            if (options.headers) {
+              if (options.headers instanceof Headers) {
+                options.headers.forEach((value, key) => {
+                  headers[key.toUpperCase()] = value;
+                });
+              } else if (typeof options.headers === 'object') {
+                Object.keys(options.headers).forEach(key => {
+                  headers[key.toUpperCase()] = options.headers[key];
+                });
+              }
+            }
+            
+            // Parse table name from URL
+            const tableName = MockServer.parseTableName(url);
+            if (tableName && tableName !== 'table') {
+              if (method === 'SELECT') {
+                if (!headers['FROM']) {
+                  headers['FROM'] = tableName;
+                }
+              } else if (method === 'INSERT' || method === 'UPDATE' || method === 'DELETE' || method === 'UPSERT') {
+                if (!headers['TABLE']) {
+                  headers['TABLE'] = tableName;
+                }
+              }
+            }
+            
+            // Parse body
+            let body = null;
+            if (options.body) {
+              try {
+                body = typeof options.body === 'string' ? JSON.parse(options.body) : options.body;
+              } catch (e) {
+                body = options.body;
+              }
+            }
+            
+            // Call MockServer
+            const response = MockServer.handleRequest(method, url, headers, body);
+            
+            // Create mock Response object
+            const mockResponse = {
+              ok: response.status >= 200 && response.status < 300,
+              status: response.status,
+              statusText: response.status === 200 ? 'OK' : 'Error',
+              headers: new Headers(response.headers),
+              json: () => Promise.resolve(response.body),
+              text: () => Promise.resolve(JSON.stringify(response.body))
+            };
+            
+            resolve(mockResponse);
+          } catch (err) {
+            reject(err);
+          }
+        }, 10); // Simulate network delay
+      });
+    }
+    
+    // ========================================================================
+    // Library Management and Adapter
+    // ========================================================================
+    
+    let currentLibrary = 'promise';
+    let db = null;
+    
+    function switchLibrary() {
+      const selectedLibrary = document.getElementById('library-selector').value;
+      currentLibrary = selectedLibrary;
+      
+      // Update badge
+      const badge = document.getElementById('library-badge');
+      const badgeColors = {
+        promise: '#17a2b8',
+        callback: '#6f42c1',
+        fetch: '#fd7e14'
+      };
+      const badgeTexts = {
+        promise: 'Promise',
+        callback: 'Callback',
+        fetch: 'Fetch API'
+      };
+      badge.style.background = badgeColors[selectedLibrary];
+      badge.textContent = badgeTexts[selectedLibrary];
+      
+      // Reinitialize database client
+      updateConfig();
+      
+      // Clear previous results and console
+      testResults = { total: 0, passed: 0, failed: 0, duration: 0 };
+      document.getElementById('stat-passed').textContent = 0;
+      document.getElementById('stat-failed').textContent = 0;
+      document.getElementById('stat-duration').textContent = '0ms';
+      updateProgress(0);
+      document.getElementById('console').innerHTML = '';
+      
+      // Re-render test suites to show correct code examples
+      initUI();
+      
+      log(`Switched to ${badgeTexts[selectedLibrary]} library`, 'info');
+    }
+    
+    function updateConfig() {
+      const url = document.getElementById('server-url').value;
+      const debug = document.getElementById('debug-mode').checked;
+      const mockMode = document.getElementById('mock-mode').checked;
+      
+      // Select appropriate SQTP class based on current library
+      let SQTPClass;
+      switch (currentLibrary) {
+        case 'promise':
+          SQTPClass = SQTPPromise;
+          break;
+        case 'callback':
+          SQTPClass = SQTPCallback;
+          break;
+        case 'fetch':
+          SQTPClass = SQTPFetch;
+          break;
+        default:
+          SQTPClass = SQTPPromise;
+      }
+      
+      db = new SQTPClass(url, { debug, timeout: 30000 });
+      
+      if (mockMode) {
+        log(`Config updated (Mock Mode, ${currentLibrary})`, 'info');
+      } else {
+        log(`Config updated (Real Server Mode, ${currentLibrary})`, 'info');
+      }
+    }
+    
+    function toggleMockMode() {
+      const mockMode = document.getElementById('mock-mode').checked;
+      const serverUrlInput = document.getElementById('server-url');
+      const updateBtn = document.getElementById('update-config-btn');
+      
+      if (mockMode) {
+        // Enable mock mode
+        window.XMLHttpRequest = MockXHR;
+        window.fetch = MockFetch;
+        MockServer.reset();
+        serverUrlInput.disabled = true;
+        updateBtn.disabled = true;
+        log('Mock mode enabled - using frontend simulation', 'success');
+      } else {
+        // Disable mock mode - use real server
+        window.XMLHttpRequest = OriginalXHR;
+        window.fetch = OriginalFetch;
+        serverUrlInput.disabled = false;
+        updateBtn.disabled = false;
+        log('Mock mode disabled - using real server', 'warn');
+      }
+      
+      updateConfig();
+    }
+    
+    // ========================================================================
+    // Adapter Functions - Handle different calling conventions
+    // ========================================================================
+    
+    /**
+     * Execute direct database methods (dropTable, begin, commit, etc.)
+     * These methods have different signatures in callback vs promise/fetch
+     * @param {string} methodName - Name of the method to call
+     * @param {...any} args - Arguments to pass (excluding callback)
+     * @returns {Promise} Promise that resolves with the result
+     */
+    async function callDB(methodName, ...args) {
+      if (currentLibrary === 'callback') {
+        // Callback library: add callback as last argument
+        return new Promise((resolve, reject) => {
+          db[methodName](...args, (error, result) => {
+            if (error) {
+              reject(error);
+            } else {
+              resolve(result);
+            }
+          });
+        });
+      } else {
+        // Promise and Fetch: call directly (they return promises)
+        return db[methodName](...args);
+      }
+    }
+    
+    /**
+     * Execute query with appropriate adapter for the current library
+     * @param {Function} queryBuilderFn - Function that returns a query builder
+     * @returns {Promise} Promise that resolves with the result
+     */
+    async function executeQuery(queryBuilderFn) {
+      const queryBuilder = queryBuilderFn();
+      
+      if (currentLibrary === 'callback') {
+        // For callback library: wrap execute(callback) in a Promise
+        return new Promise((resolve, reject) => {
+          queryBuilder.execute((error, result) => {
+            if (error) {
+              reject(error);
+            } else {
+              resolve(result);
+            }
+          });
+        });
+      } else {
+        // For promise and fetch: use directly (they return promises)
+        return queryBuilder.execute();
+      }
+    }
+    
+    // ========================================================================
+    // Test Suites (from sqtp.xhr.promise.test.html - 31 tests)
+    // ========================================================================
+    
+    const testSuites = [
+      {
+        name: 'Setup & Teardown',
+        tests: [
+          {
+            name: 'DROP test table if exists',
+            description: '清理测试环境，删除可能存在的测试表',
+            code: `await db.dropTable('test_users', true);
+await db.dropTable('test_orders', true);
+await db.dropTable('test_products', true);`,
+            codeCallback: `db.dropTable('test_users', true, (err, result) => {
+  if (err) throw err;
+  db.dropTable('test_orders', true, (err, result) => {
+    if (err) throw err;
+    db.dropTable('test_products', true, (err, result) => {
+      if (err) throw err;
+      // Continue...
+    });
+  });
+});`,
+            fn: async () => {
+              await callDB('dropTable', 'test_users', true);
+              await callDB('dropTable', 'test_orders', true);
+              await callDB('dropTable', 'test_products', true);
+              return { message: 'Test tables dropped' };
+            }
+          },
+          {
+            name: 'CREATE test_users table',
+            description: '创建用户测试表',
+            code: `await db.createTable('test_users')
+  .ifNotExists(true)
+  .column('id', 'INTEGER')
+  .column('name', 'TEXT')
+  .column('email', 'TEXT')
+  .primaryKey('id')
+  .unique('email')
+  .autoinc('id')
+  .execute();`,
+            codeCallback: `db.createTable('test_users')
+  .ifNotExists(true)
+  .column('id', 'INTEGER')
+  .column('name', 'TEXT')
+  .column('email', 'TEXT')
+  .primaryKey('id')
+  .unique('email')
+  .autoinc('id')
+  .execute((err, result) => {
+    if (err) throw err;
+    console.log(result);
+  });`,
+            fn: async () => {
+              const result = await executeQuery(() => 
+                db.createTable('test_users')
+                  .ifNotExists(true)
+                  .column('id', 'INTEGER')
+                  .column('name', 'TEXT')
+                  .column('email', 'TEXT')
+                  .column('age', 'INTEGER', 'DEFAULT 0')
+                  .column('status', 'TEXT', "DEFAULT 'active'")
+                  .column('created_at', 'TEXT', 'DEFAULT CURRENT_TIMESTAMP')
+                  .primaryKey('id')
+                  .notNull('name', 'email')
+                  .unique('email')
+                  .autoinc('id')
+              );
+              return { message: 'Table created', result };
+            }
+          },
+          {
+            name: 'CREATE test_orders table with foreign key',
+            description: '创建订单测试表（含外键约束）',
+            code: `await db.createTable('test_orders')
+  .ifNotExists(true)
+  .column('id', 'INTEGER')
+  .column('user_id', 'INTEGER')
+  .column('amount', 'REAL')
+  .primaryKey('id')
+  .foreignKey('user_id REFERENCES test_users(id)')
+  .execute();`,
+            codeCallback: `db.createTable('test_orders')
+  .ifNotExists(true)
+  .column('id', 'INTEGER')
+  .column('user_id', 'INTEGER')
+  .column('amount', 'REAL')
+  .primaryKey('id')
+  .foreignKey('user_id REFERENCES test_users(id)')
+  .execute((err, result) => {
+    if (err) throw err;
+    console.log('Table created with FK');
+  });`,
+            fn: async () => {
+              const result = await executeQuery(() => 
+                db.createTable('test_orders')
+                  .ifNotExists(true)
+                  .column('id', 'INTEGER')
+                  .column('user_id', 'INTEGER')
+                  .column('amount', 'REAL')
+                  .column('status', 'TEXT', "DEFAULT 'pending'")
+                  .primaryKey('id')
+                  .notNull('user_id', 'amount')
+                  .foreignKey('user_id REFERENCES test_users(id) ON DELETE CASCADE')
+                  .autoinc('id')
+              );
+              return { message: 'Table created with FK', result };
+            }
+          }
+        ]
+      },
+      {
+        name: 'INSERT Operations',
+        tests: [
+          {
+            name: 'INSERT single record',
+            description: '插入单条记录',
+            code: `await db.insert('test_users')
+  .values({ name: 'Alice', email: 'alice@test.com', age: 25 })
+  .execute();`,
+            codeCallback: `db.insert('test_users')
+  .values({ name: 'Alice', email: 'alice@test.com', age: 25 })
+  .execute((err, result) => {
+    if (err) throw err;
+    console.log('Insert ID:', result.headers['X-SQTP-Last-Insert-Id']);
+  });`,
+            fn: async () => {
+              const result = await executeQuery(() => 
+                db.insert('test_users')
+                  .values({ name: 'Alice', email: 'alice@test.com', age: 25 })
+              );
+              return { 
+                message: 'Record inserted',
+                lastInsertId: result.headers['X-SQTP-Last-Insert-Id']
+              };
+            }
+          },
+          {
+            name: 'INSERT with IF-NOT-EXISTS',
+            description: '使用 IF-NOT-EXISTS 避免重复插入',
+            code: `await db.insert('test_users')
+  .values({ name: 'Bob', email: 'bob@test.com' })
+  .ifNotExists(true)
+  .execute();`,
+            codeCallback: `db.insert('test_users')
+  .values({ name: 'Bob', email: 'bob@test.com' })
+  .ifNotExists(true)
+  .execute((err, result) => {
+    if (err) throw err;
+    console.log('Duplicate ignored:', result.headers['X-SQTP-Changes']);
+  });`,
+            fn: async () => {
+              await executeQuery(() => 
+                db.insert('test_users')
+                  .values({ name: 'Bob', email: 'bob@test.com', age: 30 })
+              );
+              
+              const result = await executeQuery(() => 
+                db.insert('test_users')
+                  .values({ name: 'Bob Updated', email: 'bob@test.com', age: 31 })
+                  .ifNotExists(true)
+              );
+              
+              return { 
+                message: 'Duplicate insert ignored',
+                changes: result.headers['X-SQTP-Changes']
+              };
+            }
+          },
+          {
+            name: 'INSERT multiple records',
+            description: '批量插入多条记录',
+            code: `const users = [
+  { name: 'Charlie', email: 'charlie@test.com', age: 28 },
+  { name: 'David', email: 'david@test.com', age: 35 }
+];
+for (const user of users) {
+  await db.insert('test_users').values(user).execute();
+}`,
+            codeCallback: `const users = [
+  { name: 'Charlie', email: 'charlie@test.com', age: 28 },
+  { name: 'David', email: 'david@test.com', age: 35 }
+];
+// Recursive callback pattern
+let i = 0;
+function insertNext() {
+  if (i >= users.length) return console.log('Done');
+  db.insert('test_users').values(users[i++]).execute((err, result) => {
+    if (err) throw err;
+    insertNext();
+  });
+}
+insertNext();`,
+            fn: async () => {
+              const users = [
+                { name: 'Charlie', email: 'charlie@test.com', age: 28 },
+                { name: 'David', email: 'david@test.com', age: 35 },
+                { name: 'Eve', email: 'eve@test.com', age: 22 }
+              ];
+              
+              const results = [];
+              for (const user of users) {
+                const result = await executeQuery(() => 
+                  db.insert('test_users').values(user)
+                );
+                results.push(result.headers['X-SQTP-Last-Insert-Id']);
+              }
+              
+              return { message: 'Multiple records inserted', ids: results };
+            }
+          }
+        ]
+      },
+      {
+        name: 'SELECT Operations',
+        tests: [
+          {
+            name: 'SELECT all records',
+            description: '查询所有记录',
+            code: `const result = await db.select('test_users').execute();`,
+            codeCallback: `db.select('test_users').execute((err, result) => {
+  if (err) throw err;
+  console.log('Found', result.data.length, 'records');
+});`,
+            fn: async () => {
+              const result = await executeQuery(() => db.select('test_users'));
+              if (result.data.length === 0) {
+                throw new Error('No records found');
+              }
+              return { 
+                message: `Found ${result.data.length} records`,
+                count: result.data.length,
+                sample: result.data[0]
+              };
+            }
+          },
+          {
+            name: 'SELECT with columns',
+            description: '指定查询列',
+            code: `const result = await db.select('test_users')
+  .columns('id', 'name', 'email')
+  .execute();`,
+            codeCallback: `db.select('test_users')
+  .columns('id', 'name', 'email')
+  .execute((err, result) => {
+    if (err) throw err;
+    console.log(result.data);
+  });`,
+            fn: async () => {
+              const result = await executeQuery(() => 
+                db.select('test_users')
+                  .columns('id', 'name', 'email')
+              );
+              
+              const firstRow = result.data[0];
+              if ('age' in firstRow || 'status' in firstRow) {
+                throw new Error('Columns not filtered correctly');
+              }
+              
+              return { message: 'Columns filtered', sample: firstRow };
+            }
+          },
+          {
+            name: 'SELECT with WHERE',
+            description: '使用 WHERE 条件查询',
+            code: `const result = await db.select('test_users')
+  .where("age >= 28")
+  .orderBy('age ASC')
+  .execute();`,
+            codeCallback: `db.select('test_users')
+  .where("age >= 28")
+  .orderBy('age ASC')
+  .execute((err, result) => {
+    if (err) throw err;
+    console.log('Found', result.data.length, 'users');
+  });`,
+            fn: async () => {
+              const result = await executeQuery(() => 
+                db.select('test_users')
+                  .where("age >= 28")
+                  .orderBy('age ASC')
+              );
+              
+              if (result.data.length === 0) {
+                throw new Error('WHERE filter failed');
+              }
+              
+              return { 
+                message: `Found ${result.data.length} users with age >= 28`,
+                users: result.data.map(u => ({ name: u.name, age: u.age }))
+              };
+            }
+          },
+          {
+            name: 'SELECT with WHERE-IN',
+            description: '使用 WHERE-IN 批量查询',
+            code: `const result = await db.select('test_users')
+  .whereIn('name', ['Alice', 'Bob', 'Charlie'])
+  .orderBy('name ASC')
+  .execute();`,
+            codeCallback: `db.select('test_users')
+  .whereIn('name', ['Alice', 'Bob', 'Charlie'])
+  .orderBy('name ASC')
+  .execute((err, result) => {
+    if (err) throw err;
+    console.log('Found:', result.data.map(u => u.name));
+  });`,
+            fn: async () => {
+              const result = await executeQuery(() => 
+                db.select('test_users')
+                  .whereIn('name', ['Alice', 'Bob', 'Charlie'])
+                  .orderBy('name ASC')
+              );
+              
+              if (result.data.length !== 3) {
+                throw new Error(`Expected 3 records, got ${result.data.length}`);
+              }
+              
+              return { 
+                message: 'WHERE-IN query successful',
+                users: result.data.map(u => u.name)
+              };
+            }
+          },
+          {
+            name: 'SELECT with LIMIT and OFFSET',
+            description: '分页查询',
+            code: `const page1 = await db.select('test_users')
+  .orderBy('id ASC')
+  .limit(2)
+  .offset(0)
+  .execute();`,
+            codeCallback: `db.select('test_users')
+  .orderBy('id ASC')
+  .limit(2)
+  .offset(0)
+  .execute((err, page1) => {
+    if (err) throw err;
+    console.log('Page 1:', page1.data.map(u => u.id));
+  });`,
+            fn: async () => {
+              const page1 = await executeQuery(() => 
+                db.select('test_users')
+                  .orderBy('id ASC')
+                  .limit(2)
+                  .offset(0)
+              );
+              
+              const page2 = await executeQuery(() => 
+                db.select('test_users')
+                  .orderBy('id ASC')
+                  .limit(2)
+                  .offset(2)
+              );
+              
+              if (page1.data[0].id === page2.data[0].id) {
+                throw new Error('Pagination failed - same records');
+              }
+              
+              return { 
+                message: 'Pagination works',
+                page1: page1.data.map(u => u.id),
+                page2: page2.data.map(u => u.id)
+              };
+            }
+          },
+          {
+            name: 'SELECT with DISTINCT',
+            description: '去重查询',
+            code: `const result = await db.select('test_users')
+  .columns('status')
+  .distinct()
+  .execute();`,
+            codeCallback: `db.select('test_users')
+  .columns('status')
+  .distinct()
+  .execute((err, result) => {
+    if (err) throw err;
+    console.log('Unique statuses:', result.data);
+  });`,
+            fn: async () => {
+              const result = await executeQuery(() => 
+                db.select('test_users')
+                  .columns('status')
+                  .distinct()
+              );
+              
+              return { 
+                message: 'DISTINCT query successful',
+                statuses: result.data.map(r => r.status)
+              };
+            }
+          },
+          {
+            name: 'SELECT with different VIEW formats',
+            description: '测试不同的视图格式',
+            code: `const objectView = await db.select('test_users')
+  .view('object')
+  .execute();
+  
+const rowView = await db.select('test_users')
+  .view('row')
+  .execute();`,
+            codeCallback: `db.select('test_users')
+  .view('object')
+  .limit(2)
+  .execute((err, objectView) => {
+    if (err) throw err;
+    console.log('Object view:', objectView.data[0]);
+    // Then query row view...
+  });`,
+            fn: async () => {
+              const objectView = await executeQuery(() => 
+                db.select('test_users')
+                  .view('object')
+                  .limit(2)
+              );
+              
+              const rowView = await executeQuery(() => 
+                db.select('test_users')
+                  .view('row')
+                  .limit(2)
+              );
+              
+              const columnView = await executeQuery(() => 
+                db.select('test_users')
+                  .view('column')
+                  .limit(2)
+              );
+              
+              return { 
+                message: 'All view formats work',
+                objectSample: objectView.data[0],
+                rowSample: rowView.data[0],
+                columnSample: Object.keys(columnView.data).slice(0, 3)
+              };
+            }
+          }
+        ]
+      },
+      {
+        name: 'UPDATE Operations',
+        tests: [
+          {
+            name: 'UPDATE with WHERE condition',
+            description: '条件更新',
+            code: `await db.update('test_users')
+  .set({ age: 26, status: 'updated' })
+  .where("name = 'Alice'")
+  .execute();`,
+            codeCallback: `db.update('test_users')
+  .set({ age: 26, status: 'updated' })
+  .where("name = 'Alice'")
+  .execute((err, result) => {
+    if (err) throw err;
+    console.log('Updated:', result.headers['X-SQTP-Changes']);
+  });`,
+            fn: async () => {
+              const result = await executeQuery(() => 
+                db.update('test_users')
+                  .set({ age: 26, status: 'updated' })
+                  .where("name = 'Alice'")
+              );
+              
+              const verify = await executeQuery(() => 
+                db.select('test_users')
+                  .where("name = 'Alice'")
+              );
+              
+              if (verify.data[0].age !== 26) {
+                throw new Error('Update failed');
+              }
+              
+              return { 
+                message: 'Update successful',
+                changes: result.headers['X-SQTP-Changes'],
+                updated: verify.data[0]
+              };
+            }
+          },
+          {
+            name: 'UPDATE with WHERE-IN',
+            description: '使用 WHERE-IN 批量更新',
+            code: `await db.update('test_users')
+  .set({ status: 'batch_updated' })
+  .whereIn('name', ['Bob', 'Charlie'])
+  .execute();`,
+            codeCallback: `db.update('test_users')
+  .set({ status: 'batch_updated' })
+  .whereIn('name', ['Bob', 'Charlie'])
+  .execute((err, result) => {
+    if (err) throw err;
+    console.log('Updated:', result.headers['X-SQTP-Changes'], 'records');
+  });`,
+            fn: async () => {
+              const result = await executeQuery(() => 
+                db.update('test_users')
+                  .set({ status: 'batch_updated' })
+                  .whereIn('name', ['Bob', 'Charlie'])
+              );
+              
+              if (result.headers['X-SQTP-Changes'] !== '2') {
+                throw new Error('Expected 2 changes');
+              }
+              
+              return { 
+                message: 'Batch update successful',
+                changes: result.headers['X-SQTP-Changes']
+              };
+            }
+          },
+          {
+            name: 'UPDATE should reject without WHERE',
+            description: '测试安全机制：拒绝无 WHERE 的更新',
+            code: `// This should throw an error:
+await db.update('test_users')
+  .set({ status: 'danger' })
+  .execute(); // ❌ No WHERE clause`,
+            codeCallback: `// This should throw an error:
+db.update('test_users')
+  .set({ status: 'danger' })
+  .execute((err, result) => {
+    if (err) {
+      console.log('Expected error:', err.message);
+    }
+  }); // ❌ No WHERE clause`,
+            fn: async () => {
+              try {
+                await executeQuery(() => 
+                  db.update('test_users')
+                    .set({ status: 'danger' })
+                );
+                throw new Error('Should have been rejected');
+              } catch (err) {
+                if (err.message.includes('WHERE clause is required')) {
+                  return { 
+                    message: 'Safety check passed',
+                    expectedError: err.message,
+                    errorStack: err.stack,
+                    isExpectedError: true
+                  };
+                }
+                throw err;
+              }
+            }
+          },
+          {
+            name: 'UPDATE all rows with WHERE *',
+            description: '使用 WHERE * 更新全表',
+            code: `await db.update('test_users')
+  .set({ status: 'all_updated' })
+  .where('*')
+  .execute();`,
+            codeCallback: `db.update('test_users')
+  .set({ status: 'all_updated' })
+  .where('*')
+  .execute((err, result) => {
+    if (err) throw err;
+    console.log('Updated all:', result.headers['X-SQTP-Changes']);
+  });`,
+            fn: async () => {
+              const countBefore = await executeQuery(() => db.select('test_users'));
+              
+              const result = await executeQuery(() => 
+                db.update('test_users')
+                  .set({ status: 'all_updated' })
+                  .where('*')
+              );
+              
+              if (parseInt(result.headers['X-SQTP-Changes']) !== countBefore.data.length) {
+                throw new Error('Not all rows updated');
+              }
+              
+              return { 
+                message: 'All rows updated',
+                changes: result.headers['X-SQTP-Changes']
+              };
+            }
+          }
+        ]
+      },
+      {
+        name: 'UPSERT Operations',
+        tests: [
+          {
+            name: 'UPSERT insert new record',
+            description: 'UPSERT 插入新记录',
+            code: `await db.upsert('test_users')
+  .key('email')
+  .values({ name: 'Frank', email: 'frank@test.com', age: 40 })
+  .execute();`,
+            codeCallback: `db.upsert('test_users')
+  .key('email')
+  .values({ name: 'Frank', email: 'frank@test.com', age: 40 })
+  .execute((err, result) => {
+    if (err) throw err;
+    console.log('Upserted:', result.headers['X-SQTP-Last-Insert-Id']);
+  });`,
+            fn: async () => {
+              const result = await executeQuery(() => 
+                db.upsert('test_users')
+                  .key('email')
+                  .values({ name: 'Frank', email: 'frank@test.com', age: 40 })
+              );
+              
+              return { 
+                message: 'New record inserted via UPSERT',
+                result: result.headers['X-SQTP-Last-Insert-Id']
+              };
+            }
+          },
+          {
+            name: 'UPSERT update existing record',
+            description: 'UPSERT 更新已存在记录',
+            code: `await db.upsert('test_users')
+  .key('email')
+  .values({ name: 'Frank Updated', email: 'frank@test.com', age: 41 })
+  .execute();`,
+            codeCallback: `db.upsert('test_users')
+  .key('email')
+  .values({ name: 'Frank Updated', email: 'frank@test.com', age: 41 })
+  .execute((err, result) => {
+    if (err) throw err;
+    console.log('Updated via UPSERT');
+  });`,
+            fn: async () => {
+              await executeQuery(() => 
+                db.upsert('test_users')
+                  .key('email')
+                  .values({ name: 'Frank Updated', email: 'frank@test.com', age: 41 })
+              );
+              
+              const verify = await executeQuery(() => 
+                db.select('test_users')
+                  .where("email = 'frank@test.com'")
+              );
+              
+              if (verify.data[0].age !== 41) {
+                throw new Error('UPSERT update failed');
+              }
+              
+              return { 
+                message: 'Existing record updated via UPSERT',
+                updated: verify.data[0]
+              };
+            }
+          }
+        ]
+      },
+      {
+        name: 'DELETE Operations',
+        tests: [
+          {
+            name: 'DELETE with WHERE condition',
+            description: '条件删除',
+            code: `await db.delete('test_users')
+  .where("name = 'Frank Updated'")
+  .execute();`,
+            codeCallback: `db.delete('test_users')
+  .where("name = 'Frank Updated'")
+  .execute((err, result) => {
+    if (err) throw err;
+    console.log('Deleted:', result.headers['X-SQTP-Changes']);
+  });`,
+            fn: async () => {
+              const result = await executeQuery(() => 
+                db.delete('test_users')
+                  .where("name = 'Frank Updated'")
+              );
+              
+              if (result.headers['X-SQTP-Changes'] !== '1') {
+                throw new Error('Expected 1 deletion');
+              }
+              
+              return { 
+                message: 'Record deleted',
+                changes: result.headers['X-SQTP-Changes']
+              };
+            }
+          },
+          {
+            name: 'DELETE with WHERE-IN',
+            description: '使用 WHERE-IN 批量删除',
+            code: `await db.delete('test_users')
+  .whereIn('name', ['David', 'Eve'])
+  .execute();`,
+            codeCallback: `db.delete('test_users')
+  .whereIn('name', ['David', 'Eve'])
+  .execute((err, result) => {
+    if (err) throw err;
+    console.log('Deleted:', result.headers['X-SQTP-Changes'], 'records');
+  });`,
+            fn: async () => {
+              const result = await executeQuery(() => 
+                db.delete('test_users')
+                  .whereIn('name', ['David', 'Eve'])
+              );
+              
+              if (result.headers['X-SQTP-Changes'] !== '2') {
+                throw new Error('Expected 2 deletions');
+              }
+              
+              return { 
+                message: 'Batch delete successful',
+                changes: result.headers['X-SQTP-Changes']
+              };
+            }
+          },
+          {
+            name: 'DELETE should reject without WHERE',
+            description: '测试安全机制：拒绝无 WHERE 的删除',
+            code: `// This should throw an error:
+await db.delete('test_users')
+  .execute(); // ❌ No WHERE clause`,
+            codeCallback: `// This should throw an error:
+db.delete('test_users')
+  .execute((err, result) => {
+    if (err) {
+      console.log('Expected error:', err.message);
+    }
+  }); // ❌ No WHERE clause`,
+            fn: async () => {
+              try {
+                await executeQuery(() => db.delete('test_users'));
+                throw new Error('Should have been rejected');
+              } catch (err) {
+                if (err.message.includes('WHERE clause is required')) {
+                  return { 
+                    message: 'Safety check passed',
+                    expectedError: err.message,
+                    errorStack: err.stack,
+                    isExpectedError: true
+                  };
+                }
+                throw err;
+              }
+            }
+          }
+        ]
+      },
+      {
+        name: 'JOIN Operations',
+        tests: [
+          {
+            name: 'Setup data for JOIN tests',
+            description: '准备关联查询测试数据',
+            code: `const users = await db.select('test_users').columns('id', 'name').execute();
+for (const user of users.data) {
+  await db.insert('test_orders')
+    .values({ user_id: user.id, amount: Math.random() * 1000 })
+    .execute();
+}`,
+            codeCallback: `db.select('test_users').columns('id', 'name').execute((err, users) => {
+  if (err) throw err;
+  let i = 0;
+  function insertNext() {
+    if (i >= users.data.length) return console.log('Done');
+    const user = users.data[i++];
+    db.insert('test_orders')
+      .values({ user_id: user.id, amount: Math.random() * 1000 })
+      .execute((err) => {
+        if (err) throw err;
+        insertNext();
+      });
+  }
+  insertNext();
+});`,
+            fn: async () => {
+              // Insert orders for remaining users
+              const users = await executeQuery(() => 
+                db.select('test_users')
+                  .columns('id', 'name')
+              );
+              
+              for (const user of users.data.slice(0, 2)) {
+                await executeQuery(() => 
+                  db.insert('test_orders')
+                    .values({ user_id: user.id, amount: Math.random() * 1000 })
+                );
+              }
+              
+              return { message: 'Test data prepared', userCount: users.data.length };
+            }
+          },
+          {
+            name: 'INNER JOIN',
+            description: '内连接查询',
+            code: `const result = await db.select('test_users')
+  .columns('test_users.name', 'test_orders.amount')
+  .join('test_orders', 'test_users.id = test_orders.user_id')
+  .execute();`,
+            codeCallback: `db.select('test_users')
+  .columns('test_users.name', 'test_orders.amount')
+  .join('test_orders', 'test_users.id = test_orders.user_id')
+  .execute((err, result) => {
+    if (err) throw err;
+    console.log('Found', result.data.length, 'joined records');
+  });`,
+            fn: async () => {
+              const result = await executeQuery(() => 
+                db.select('test_users')
+                  .columns('test_users.name', 'test_orders.amount', 'test_orders.status')
+                  .join('test_orders', 'test_users.id = test_orders.user_id')
+                  .orderBy('test_users.name ASC')
+              );
+              
+              if (result.data.length === 0) {
+                throw new Error('JOIN returned no results');
+              }
+              
+              return { 
+                message: 'INNER JOIN successful',
+                count: result.data.length,
+                sample: result.data[0]
+              };
+            }
+          },
+          {
+            name: 'LEFT JOIN',
+            description: '左连接查询',
+            code: `const result = await db.select('test_users')
+  .columns('test_users.name', 'test_orders.amount')
+  .leftJoin('test_orders', 'test_users.id = test_orders.user_id')
+  .execute();`,
+            codeCallback: `db.select('test_users')
+  .columns('test_users.name', 'test_orders.amount')
+  .leftJoin('test_orders', 'test_users.id = test_orders.user_id')
+  .execute((err, result) => {
+    if (err) throw err;
+    console.log('LEFT JOIN returned', result.data.length, 'records');
+  });`,
+            fn: async () => {
+              const result = await executeQuery(() => 
+                db.select('test_users')
+                  .columns('test_users.name', 'test_orders.amount')
+                  .leftJoin('test_orders', 'test_users.id = test_orders.user_id')
+                  .orderBy('test_users.name ASC')
+              );
+              
+              const usersWithoutOrders = result.data.filter(r => r.amount === null);
+              
+              return { 
+                message: 'LEFT JOIN successful',
+                totalUsers: result.data.length,
+                withoutOrders: usersWithoutOrders.length
+              };
+            }
+          }
+        ]
+      },
+      {
+        name: 'Transaction Operations',
+        tests: [
+          {
+            name: 'COMMIT transaction',
+            description: '提交事务',
+            code: `await db.begin();
+await db.insert('test_users')
+  .values({ name: 'TxUser1', email: 'tx1@test.com' })
+  .execute();
+await db.commit();`,
+            codeCallback: `db.begin((err) => {
+  if (err) throw err;
+  db.insert('test_users')
+    .values({ name: 'TxUser1', email: 'tx1@test.com' })
+    .execute((err, result) => {
+      if (err) throw err;
+      db.commit((err) => {
+        if (err) throw err;
+        console.log('Transaction committed');
+      });
+    });
+});`,
+            fn: async () => {
+              await callDB('begin');
+              
+              await executeQuery(() => 
+                db.insert('test_users')
+                  .values({ name: 'TxUser1', email: 'tx1@test.com', age: 30 })
+              );
+              
+              await executeQuery(() => 
+                db.insert('test_users')
+                  .values({ name: 'TxUser2', email: 'tx2@test.com', age: 31 })
+              );
+              
+              await callDB('commit');
+              
+              const verify = await executeQuery(() => 
+                db.select('test_users')
+                  .whereIn('email', ['tx1@test.com', 'tx2@test.com'])
+              );
+              
+              if (verify.data.length !== 2) {
+                throw new Error('Transaction commit failed');
+              }
+              
+              return { message: 'Transaction committed', records: verify.data.length };
+            }
+          },
+          {
+            name: 'ROLLBACK transaction',
+            description: '回滚事务',
+            code: `await db.begin();
+await db.insert('test_users')
+  .values({ name: 'RollbackUser', email: 'rollback@test.com' })
+  .execute();
+await db.rollback();`,
+            codeCallback: `db.begin((err) => {
+  if (err) throw err;
+  db.insert('test_users')
+    .values({ name: 'RollbackUser', email: 'rollback@test.com' })
+    .execute((err, result) => {
+      if (err) throw err;
+      db.rollback((err) => {
+        if (err) throw err;
+        console.log('Transaction rolled back');
+      });
+    });
+});`,
+            fn: async () => {
+              await callDB('begin');
+              
+              await executeQuery(() => 
+                db.insert('test_users')
+                  .values({ name: 'RollbackUser', email: 'rollback@test.com', age: 99 })
+              );
+              
+              await callDB('rollback');
+              
+              const verify = await executeQuery(() => 
+                db.select('test_users')
+                  .where("email = 'rollback@test.com'")
+              );
+              
+              if (verify.data.length !== 0) {
+                throw new Error('Transaction rollback failed');
+              }
+              
+              return { message: 'Transaction rolled back successfully' };
+            }
+          },
+          {
+            name: 'SAVEPOINT',
+            description: '保存点',
+            code: `await db.begin();
+await db.insert('test_users')
+  .values({ name: 'SP1', email: 'sp1@test.com' })
+  .execute();
+await db.savepoint('sp1');`,
+            codeCallback: `db.begin((err) => {
+  if (err) throw err;
+  db.insert('test_users')
+    .values({ name: 'SP1', email: 'sp1@test.com' })
+    .execute((err, result) => {
+      if (err) throw err;
+      db.savepoint('sp1', (err) => {
+        if (err) throw err;
+        console.log('Savepoint created');
+      });
+    });
+});`,
+            fn: async () => {
+              await callDB('begin');
+              
+              await executeQuery(() => 
+                db.insert('test_users')
+                  .values({ name: 'SP1', email: 'sp1@test.com', age: 50 })
+              );
+              
+              await callDB('savepoint', 'sp1');
+              
+              await executeQuery(() => 
+                db.insert('test_users')
+                  .values({ name: 'SP2', email: 'sp2@test.com', age: 51 })
+              );
+              
+              // Note: Full savepoint rollback requires server support
+              await callDB('commit');
+              
+              return { message: 'Savepoint created' };
+            }
+          }
+        ]
+      },
+      {
+        name: 'Error Handling',
+        tests: [
+          {
+            name: 'Handle non-existent table',
+            description: '处理不存在的表',
+            code: `// This should throw an error:
+await db.select('nonexistent_table').execute();`,
+            codeCallback: `// This should throw an error:
+db.select('nonexistent_table').execute((err, result) => {
+  if (err) {
+    console.log('Expected error:', err.message);
+  }
+});`,
+            fn: async () => {
+              let caughtError = null;
+              try {
+                await executeQuery(() => db.select('nonexistent_table'));
+              } catch (err) {
+                caughtError = err;
+              }
+              
+              if (!caughtError) {
+                throw new Error('Expected error was not thrown');
+              }
+              
+              return { 
+                message: 'Error handled correctly',
+                errorStatus: caughtError.status,
+                expectedError: caughtError.response?.data?.error || caughtError.message,
+                errorStack: caughtError.stack,
+                isExpectedError: true
+              };
+            }
+          },
+          {
+            name: 'Handle invalid SQL',
+            description: '处理无效的 SQL',
+            code: `// This should throw an error:
+await db.select('test_users')
+  .where("invalid SQL syntax @#$")
+  .execute();`,
+            codeCallback: `// This should throw an error:
+db.select('test_users')
+  .where("invalid SQL syntax @#$")
+  .execute((err, result) => {
+    if (err) {
+      console.log('Expected error:', err.message);
+    }
+  });`,
+            fn: async () => {
+              let caughtError = null;
+              try {
+                await executeQuery(() => 
+                  db.select('test_users')
+                    .where("invalid SQL syntax @#$")
+                );
+              } catch (err) {
+                caughtError = err;
+              }
+              
+              if (!caughtError) {
+                throw new Error('Expected error was not thrown');
+              }
+              
+              return { 
+                message: 'Invalid SQL rejected',
+                errorStatus: caughtError.status,
+                expectedError: caughtError.response?.data?.error || caughtError.message,
+                errorStack: caughtError.stack,
+                isExpectedError: true
+              };
+            }
+          }
+        ]
+      },
+      {
+        name: 'Cleanup',
+        tests: [
+          {
+            name: 'DROP test tables',
+            description: '清理测试表',
+            fn: async () => {
+              await callDB('dropTable', 'test_orders', true);
+              await callDB('dropTable', 'test_users', true);
+              return { message: 'Test tables dropped' };
+            }
+          }
+        ]
+      }
+    ];
+    
+    // ========================================================================
+    // Test Framework
+    // ========================================================================
+    
+    let testResults = {
+      total: 0,
+      passed: 0,
+      failed: 0,
+      duration: 0
+    };
+    let isRunning = false;
+    let shouldStop = false;
+    let startTime = 0;
+
+    // Initialize UI
+    function initUI() {
+      const container = document.getElementById('test-suites');
+      container.innerHTML = '';
+      
+      let testCount = 0;
+      testSuites.forEach((suite, suiteIdx) => {
+        testCount += suite.tests.length;
+        
+        const suiteEl = document.createElement('div');
+        suiteEl.className = 'test-suite';
+        suiteEl.id = `suite-${suiteIdx}`;
+        
+        suiteEl.innerHTML = `
+          <div class="suite-header" onclick="toggleSuite(${suiteIdx})">
+            <div class="suite-title">${suite.name}</div>
+            <div class="suite-stats">
+              <span class="suite-stat">
+                <span id="suite-${suiteIdx}-total">${suite.tests.length}</span> tests
+              </span>
+              <span class="suite-stat passed">
+                <span id="suite-${suiteIdx}-passed">0</span> passed
+              </span>
+              <span class="suite-stat failed">
+                <span id="suite-${suiteIdx}-failed">0</span> failed
+              </span>
+            </div>
+          </div>
+          <div class="test-list" id="suite-${suiteIdx}-tests"></div>
+        `;
+        
+        const testList = suiteEl.querySelector('.test-list');
+        suite.tests.forEach((test, testIdx) => {
+          const testEl = document.createElement('div');
+          testEl.className = 'test-case pending';
+          testEl.id = `test-${suiteIdx}-${testIdx}`;
+          
+          // Select code based on current library
+          const displayCode = currentLibrary === 'callback' && test.codeCallback 
+            ? test.codeCallback 
+            : test.code;
+          
+          testEl.innerHTML = `
+            <div class="test-header">
+              <div class="test-name">
+                <span class="icon pending"></span>
+                <span>${test.name}</span>
+              </div>
+              <span class="test-status pending">pending</span>
+            </div>
+            <div class="test-description">${test.description}</div>
+            ${displayCode ? `<div class="test-code"><pre><code>${displayCode}</code></pre></div>` : ''}
+            <div class="test-duration"></div>
+            <div class="test-details"></div>
+          `;
+          
+          testList.appendChild(testEl);
+        });
+        
+        container.appendChild(suiteEl);
+      });
+      
+      document.getElementById('stat-total').textContent = testCount;
+      testResults.total = testCount;
+    }
+
+    // Run all tests
+    async function runAllTests() {
+      if (isRunning) return;
+      
+      isRunning = true;
+      shouldStop = false;
+      startTime = Date.now();
+      testResults = { total: testResults.total, passed: 0, failed: 0, duration: 0 };
+      
+      document.getElementById('run-all-btn').disabled = true;
+      document.getElementById('stop-btn').disabled = false;
+      document.getElementById('overall-status').style.display = 'inline-block';
+      
+      log('Starting test run...', 'info');
+      
+      for (let suiteIdx = 0; suiteIdx < testSuites.length; suiteIdx++) {
+        if (shouldStop) break;
+        
+        const suite = testSuites[suiteIdx];
+        document.getElementById(`suite-${suiteIdx}`).classList.add('expanded');
+        
+        let suitePassed = 0;
+        let suiteFailed = 0;
+        
+        for (let testIdx = 0; testIdx < suite.tests.length; testIdx++) {
+          if (shouldStop) break;
+          
+          const test = suite.tests[testIdx];
+          const result = await runTest(suiteIdx, testIdx, test);
+          
+          if (result === 'passed') suitePassed++;
+          if (result === 'failed') suiteFailed++;
+          
+          document.getElementById(`suite-${suiteIdx}-passed`).textContent = suitePassed;
+          document.getElementById(`suite-${suiteIdx}-failed`).textContent = suiteFailed;
+        }
+      }
+      
+      testResults.duration = Date.now() - startTime;
+      document.getElementById('stat-duration').textContent = testResults.duration + 'ms';
+      document.getElementById('overall-status').style.display = 'none';
+      document.getElementById('run-all-btn').disabled = false;
+      document.getElementById('stop-btn').disabled = true;
+      
+      isRunning = false;
+      
+      const status = testResults.failed === 0 ? 'success' : 'error';
+      log(`Test run completed: ${testResults.passed}/${testResults.total} passed in ${testResults.duration}ms`, status);
+      
+      updateProgress(100);
+    }
+
+    // Run single test
+    async function runTest(suiteIdx, testIdx, test) {
+      const testEl = document.getElementById(`test-${suiteIdx}-${testIdx}`);
+      const iconEl = testEl.querySelector('.icon');
+      const statusEl = testEl.querySelector('.test-status');
+      const durationEl = testEl.querySelector('.test-duration');
+      const detailsEl = testEl.querySelector('.test-details');
+      
+      // Set running state
+      testEl.className = 'test-case running';
+      iconEl.className = 'icon running';
+      statusEl.className = 'test-status running';
+      statusEl.textContent = 'running';
+      
+      const testStart = Date.now();
+      
+      try {
+        const result = await test.fn();
+        const duration = Date.now() - testStart;
+        
+        // Check if this is an expected error test
+        const isExpectedError = result && result.isExpectedError;
+        
+        // Set passed state
+        testEl.className = 'test-case passed';
+        iconEl.className = 'icon passed';
+        statusEl.className = 'test-status passed';
+        statusEl.textContent = 'passed';
+        durationEl.textContent = `⏱ ${duration}ms`;
+        
+        // Display result with special formatting for expected errors
+        if (isExpectedError) {
+          testEl.classList.add('expected-error');
+          detailsEl.innerHTML = `<div class="test-error" style="color: #856404;">
+<strong style="color: #28a745;">✓ Expected Error Caught</strong>
+
+${result.expectedError}
+
+${result.errorStack ? result.errorStack : ''}
+</div>`;
+        } else {
+          detailsEl.innerHTML = `<div class="test-result">${JSON.stringify(result, null, 2)}</div>`;
+        }
+        
+        testResults.passed++;
+        document.getElementById('stat-passed').textContent = testResults.passed;
+        
+        log(`✓ ${test.name} (${duration}ms)`, 'success');
+        
+        updateProgress((testResults.passed + testResults.failed) / testResults.total * 100);
+        
+        return 'passed';
+      } catch (err) {
+        const duration = Date.now() - testStart;
+        
+        // Set failed state
+        testEl.className = 'test-case failed';
+        iconEl.className = 'icon failed';
+        statusEl.className = 'test-status failed';
+        statusEl.textContent = 'failed';
+        durationEl.textContent = `⏱ ${duration}ms`;
+        detailsEl.innerHTML = `<div class="test-error">${err.message}\n\n${err.stack || ''}</div>`;
+        
+        testResults.failed++;
+        document.getElementById('stat-failed').textContent = testResults.failed;
+        
+        log(`✗ ${test.name}: ${err.message}`, 'error');
+        
+        updateProgress((testResults.passed + testResults.failed) / testResults.total * 100);
+        
+        return 'failed';
+      }
+    }
+
+    // ========================================================================
+    // UI Control Functions
+    // ========================================================================
+
+    function stopTests() {
+      shouldStop = true;
+      log('Stopping tests...', 'warn');
+    }
+
+    function clearResults() {
+      initUI();
+      testResults = { total: testResults.total, passed: 0, failed: 0, duration: 0 };
+      document.getElementById('stat-passed').textContent = 0;
+      document.getElementById('stat-failed').textContent = 0;
+      document.getElementById('stat-duration').textContent = '0ms';
+      updateProgress(0);
+      document.getElementById('console').innerHTML = '';
+      log('Results cleared', 'info');
+    }
+
+    function toggleSuite(idx) {
+      const suite = document.getElementById(`suite-${idx}`);
+      suite.classList.toggle('expanded');
+    }
+
+    function expandAll() {
+      document.querySelectorAll('.test-suite').forEach(el => el.classList.add('expanded'));
+    }
+
+    function collapseAll() {
+      document.querySelectorAll('.test-suite').forEach(el => el.classList.remove('expanded'));
+    }
+
+    function toggleConsole() {
+      const consoleEl = document.getElementById('console');
+      if (consoleEl.classList.contains('show')) {
+        consoleEl.classList.remove('show');
+      } else {
+        consoleEl.classList.add('show');
+      }
+    }
+    
+    function showMockData() {
+      const mockMode = document.getElementById('mock-mode').checked;
+      if (!mockMode) {
+        alert('Mock mode is not enabled');
+        return;
+      }
+      
+      const data = {
+        tables: Object.keys(MockServer.tables),
+        tableData: {},
+        autoIncrements: MockServer.autoIncrements,
+        inTransaction: MockServer.inTransaction
+      };
+      
+      Object.keys(MockServer.tables).forEach(tableName => {
+        data.tableData[tableName] = MockServer.tables[tableName];
+      });
+      
+      log('=== Mock Server Data ===', 'info');
+      log(JSON.stringify(data, null, 2), 'info');
+      log('======================', 'info');
+      
+      // Also show in alert for convenience
+      const summary = Object.keys(MockServer.tables).map(table => 
+        `${table}: ${MockServer.tables[table].length} rows`
+      ).join('\n');
+      
+      alert('Mock Server Status:\n\n' + 
+            'Tables: ' + Object.keys(MockServer.tables).length + '\n\n' +
+            summary + '\n\n' +
+            'In Transaction: ' + MockServer.inTransaction + '\n\n' +
+            'Check console for detailed data.');
+      
+      document.getElementById('console').classList.add('show');
+    }
+
+    function updateProgress(percent) {
+      document.getElementById('progress').style.width = percent + '%';
+    }
+
+    function log(message, type = 'info') {
+      const consoleEl = document.getElementById('console');
+      const line = document.createElement('div');
+      line.className = `console-line ${type}`;
+      const timestamp = new Date().toLocaleTimeString();
+      line.textContent = `[${timestamp}] ${message}`;
+      consoleEl.appendChild(line);
+      consoleEl.scrollTop = consoleEl.scrollHeight;
+    }
+
+    // ========================================================================
+    // Initialize
+    // ========================================================================
+    
+    window.addEventListener('DOMContentLoaded', () => {
+      // Initialize Mock Mode (since it's checked by default)
+      window.XMLHttpRequest = MockXHR;
+      window.fetch = MockFetch;
+      MockServer.reset();
+      
+      updateConfig();
+      initUI();
+      log('SQTP Unified Test Suite initialized', 'info');
+      log('Mock mode enabled - using frontend simulation', 'success');
+      log('Select a library and click "Run All Tests" to start', 'info');
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,84 @@
+SQTP Protocol and JavaScript Client Libraries License
+======================================================
+
+MIT License
+-----------
+
+Copyright (c) 2026 WPP Project
+
+SQTP (Structured Query Transfer Protocol) and its JavaScript client libraries
+are distributed under the MIT License.
+
+This includes:
+  * SQTP/1.0 Protocol Specification
+    - Protocol documentation in docs/sqtp/
+  * JavaScript Client Libraries
+    - lib/sqtp/sqtp.xhr.promise.js
+    - lib/sqtp/sqtp.xhr.callback.js
+    - lib/sqtp/sqtp.fetch.js
+
+MIT License Text
+----------------
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+Why MIT License?
+----------------
+
+SQTP is designed to be a protocol and library that can be freely used in both
+open-source and commercial projects:
+
+1. **Permissive**: Allows use in proprietary software
+2. **Simple**: Easy to understand and comply with
+3. **Compatible**: Works with most other licenses including GPL
+4. **No Attribution Required**: While appreciated, not legally required
+5. **Industry Standard**: One of the most popular open-source licenses
+
+Usage Guidelines
+----------------
+
+You are free to:
+  ✅ Use SQTP in commercial projects
+  ✅ Modify the protocol implementation
+  ✅ Use the JavaScript libraries as-is or modified
+  ✅ Redistribute the code
+  ✅ Use without attribution (though appreciated)
+  ✅ Combine with other licenses
+
+The only requirement:
+  📋 Include this license text if you redistribute the code
+
+Note on the Main WPP Project
+-----------------------------
+
+While SQTP and its libraries are MIT licensed, the main WPP project that
+implements the SQTP server is licensed under GPL 3.0. This means:
+
+  * SQTP Protocol Specification: MIT (this file)
+  * SQTP JavaScript Libraries: MIT (this file)
+  * WPP Server Implementation: GPL 3.0 (see main LICENSE file)
+
+This dual-licensing approach allows:
+  1. Anyone to implement SQTP clients/servers under any license
+  2. The reference JavaScript libraries to be used freely
+  3. The WPP server implementation to remain GPL 3.0
+
+For questions about licensing, please contact the WPP Project maintainers.

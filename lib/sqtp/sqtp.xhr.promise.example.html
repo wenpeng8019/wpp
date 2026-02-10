@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SQTP XHR Client - Usage Examples</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      line-height: 1.6;
+    }
+    h1 { color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px; }
+    h2 { color: #555; margin-top: 30px; }
+    pre {
+      background: #f5f5f5;
+      padding: 15px;
+      border-radius: 5px;
+      overflow-x: auto;
+      border-left: 4px solid #007bff;
+    }
+    code { font-family: 'Courier New', monospace; }
+    .example { margin: 20px 0; }
+    button {
+      background: #007bff;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-right: 10px;
+      margin-bottom: 10px;
+    }
+    button:hover { background: #0056b3; }
+    .result {
+      background: #e9ecef;
+      padding: 15px;
+      border-radius: 5px;
+      margin-top: 10px;
+      white-space: pre-wrap;
+      font-family: monospace;
+      font-size: 12px;
+    }
+    .error { background: #f8d7da; color: #721c24; }
+    .success { background: #d4edda; color: #155724; }
+  </style>
+</head>
+<body>
+  <h1>SQTP/1.0 Client Library - XMLHttpRequest Implementation</h1>
+  <p>基于 XMLHttpRequest 的 SQTP 协议 JavaScript SDK 使用示例</p>
+
+  <h2>1. 初始化</h2>
+  <div class="example">
+    <pre><code>const db = new SQTP('http://localhost:8080/db/main', {
+  debug: true,
+  timeout: 30000
+});</code></pre>
+  </div>
+
+  <h2>2. SELECT 查询</h2>
+  <div class="example">
+    <h3>基本查询</h3>
+    <button onclick="exampleSelect1()">执行查询</button>
+    <pre><code>db.select('users')
+  .columns('id', 'name', 'email')
+  .where("status = 'active'")
+  .orderBy('name ASC')
+  .limit(10)
+  .execute()
+  .then(result => console.log(result.data));</code></pre>
+    <div id="result1" class="result" style="display:none;"></div>
+  </div>
+
+  <div class="example">
+    <h3>复杂查询（JOIN + WHERE-IN）</h3>
+    <button onclick="exampleSelect2()">执行查询</button>
+    <pre><code>db.select('users')
+  .columns('users.id', 'users.name', 'COUNT(orders.id) AS order_count')
+  .leftJoin('orders', 'users.id = orders.user_id')
+  .whereIn('users.status', ['active', 'pending'])
+  .groupBy('users.id', 'users.name')
+  .having('COUNT(orders.id) > 0')
+  .orderBy('order_count DESC')
+  .limit(20)
+  .execute()
+  .then(result => console.log(result.data));</code></pre>
+    <div id="result2" class="result" style="display:none;"></div>
+  </div>
+
+  <div class="example">
+    <h3>不同视图格式</h3>
+    <button onclick="exampleSelectView()">Row 格式</button>
+    <button onclick="exampleSelectViewColumn()">Column 格式</button>
+    <pre><code>// Row 格式 - 适合数组遍历
+db.select('users')
+  .view('row')
+  .limit(5)
+  .execute();
+
+// Column 格式 - 适合图表数据
+db.select('users')
+  .view('column')
+  .limit(5)
+  .execute();</code></pre>
+    <div id="result3" class="result" style="display:none;"></div>
+  </div>
+
+  <h2>3. INSERT 插入</h2>
+  <div class="example">
+    <button onclick="exampleInsert()">执行插入</button>
+    <pre><code>db.insert('users')
+  .values({
+    name: 'Alice',
+    email: 'alice@example.com',
+    status: 'active'
+  })
+  .ifNotExists(true)
+  .execute()
+  .then(result => console.log('Inserted:', result));</code></pre>
+    <div id="result4" class="result" style="display:none;"></div>
+  </div>
+
+  <h2>4. UPDATE 更新</h2>
+  <div class="example">
+    <button onclick="exampleUpdate()">执行更新</button>
+    <pre><code>db.update('users')
+  .set({ status: 'inactive', updated_at: 'CURRENT_TIMESTAMP' })
+  .where("email = 'alice@example.com'")
+  .execute()
+  .then(result => console.log('Updated:', result));</code></pre>
+    <div id="result5" class="result" style="display:none;"></div>
+  </div>
+
+  <div class="example">
+    <h3>更新全表（需要显式 where('*')）</h3>
+    <button onclick="exampleUpdateAll()">执行全表更新</button>
+    <pre><code>db.update('users')
+  .set({ last_checked: 'CURRENT_TIMESTAMP' })
+  .where('*')  // 必需！安全机制
+  .execute();</code></pre>
+    <div id="result6" class="result" style="display:none;"></div>
+  </div>
+
+  <h2>5. UPSERT 插入或更新</h2>
+  <div class="example">
+    <button onclick="exampleUpsert()">执行 UPSERT</button>
+    <pre><code>db.upsert('users')
+  .key('email')  // 基于 email 判断是否存在
+  .values({
+    email: 'bob@example.com',
+    name: 'Bob Updated',
+    status: 'active'
+  })
+  .execute();</code></pre>
+    <div id="result7" class="result" style="display:none;"></div>
+  </div>
+
+  <h2>6. DELETE 删除</h2>
+  <div class="example">
+    <button onclick="exampleDelete()">执行删除</button>
+    <pre><code>db.delete('users')
+  .where("status = 'inactive'")
+  .execute()
+  .then(result => console.log('Deleted:', result));</code></pre>
+    <div id="result8" class="result" style="display:none;"></div>
+  </div>
+
+  <div class="example">
+    <h3>使用 WHERE-IN 删除</h3>
+    <button onclick="exampleDeleteIn()">执行删除</button>
+    <pre><code>db.delete('users')
+  .whereIn('status', ['banned', 'deleted'])
+  .execute();</code></pre>
+    <div id="result9" class="result" style="display:none;"></div>
+  </div>
+
+  <h2>7. CREATE TABLE 创建表</h2>
+  <div class="example">
+    <button onclick="exampleCreateTable()">创建表</button>
+    <pre><code>db.createTable('users')
+  .ifNotExists(true)
+  .column('id', 'INTEGER')
+  .column('name', 'TEXT')
+  .column('email', 'TEXT')
+  .column('age', 'INTEGER', 'DEFAULT 0', 'CHECK age >= 0')
+  .column('status', 'TEXT', "DEFAULT 'active'")
+  .column('created_at', 'TEXT', 'DEFAULT CURRENT_TIMESTAMP')
+  .primaryKey('id')
+  .notNull('name', 'email')
+  .unique('email')
+  .autoinc('id')
+  .execute();</code></pre>
+    <div id="result10" class="result" style="display:none;"></div>
+  </div>
+
+  <div class="example">
+    <h3>创建复合主键表</h3>
+    <button onclick="exampleCreateTableComplex()">创建表</button>
+    <pre><code>db.createTable('order_items')
+  .column('order_id', 'INTEGER')
+  .column('product_id', 'INTEGER')
+  .column('quantity', 'INTEGER', 'DEFAULT 1')
+  .column('price', 'REAL')
+  .primaryKey('order_id', 'product_id')
+  .notNull('order_id', 'product_id', 'price')
+  .foreignKey('order_id REFERENCES orders(id) ON DELETE CASCADE')
+  .foreignKey('product_id REFERENCES products(id)')
+  .withoutRowid(true)
+  .execute();</code></pre>
+    <div id="result11" class="result" style="display:none;"></div>
+  </div>
+
+  <h2>8. DROP TABLE 删除表</h2>
+  <div class="example">
+    <button onclick="exampleDropTable()">删除表</button>
+    <pre><code>db.dropTable('temp_table', true)  // true = IF EXISTS
+  .then(result => console.log('Dropped:', result));</code></pre>
+    <div id="result12" class="result" style="display:none;"></div>
+  </div>
+
+  <h2>9. 事务控制</h2>
+  <div class="example">
+    <button onclick="exampleTransaction()">执行事务</button>
+    <pre><code>// 开始事务
+db.begin()
+  .then(() => db.insert('users').values({name: 'Test', email: 'test@example.com'}).execute())
+  .then(() => db.update('users').set({status: 'active'}).where("email = 'test@example.com'").execute())
+  .then(() => db.commit())
+  .then(() => console.log('Transaction committed'))
+  .catch(err => {
+    console.error('Transaction failed:', err);
+    return db.rollback();
+  });</code></pre>
+    <div id="result13" class="result" style="display:none;"></div>
+  </div>
+
+  <h2>10. 分页查询</h2>
+  <div class="example">
+    <button onclick="examplePagination()">第1页</button>
+    <button onclick="examplePagination2()">第2页</button>
+    <pre><code>function getPage(pageNum, pageSize) {
+  return db.select('users')
+    .orderBy('id ASC')
+    .limit(pageSize)
+    .offset(pageNum * pageSize)
+    .execute()
+    .then(result => {
+      const totalRows = parseInt(result.headers['X-SQTP-Total-Rows']);
+      const totalPages = Math.ceil(totalRows / pageSize);
+      return { data: result.data, page: pageNum, totalPages };
+    });
+}
+
+getPage(0, 10).then(result => console.log(result));</code></pre>
+    <div id="result14" class="result" style="display:none;"></div>
+  </div>
+
+  <script src="sqtp.xhr.js"></script>
+  <script>
+    const db = new SQTP('http://localhost:8080/db/main', { debug: true });
+
+    function showResult(id, result, isError) {
+      const el = document.getElementById(id);
+      el.style.display = 'block';
+      el.className = 'result ' + (isError ? 'error' : 'success');
+      el.textContent = JSON.stringify(result, null, 2);
+    }
+
+    function exampleSelect1() {
+      db.select('users')
+        .columns('id', 'name', 'email')
+        .where("status = 'active'")
+        .orderBy('name ASC')
+        .limit(10)
+        .execute()
+        .then(result => showResult('result1', result))
+        .catch(err => showResult('result1', err.message, true));
+    }
+
+    function exampleSelect2() {
+      db.select('users')
+        .columns('users.id', 'users.name', 'COUNT(orders.id) AS order_count')
+        .leftJoin('orders', 'users.id = orders.user_id')
+        .whereIn('users.status', ['active', 'pending'])
+        .groupBy('users.id', 'users.name')
+        .having('COUNT(orders.id) > 0')
+        .orderBy('order_count DESC')
+        .limit(20)
+        .execute()
+        .then(result => showResult('result2', result))
+        .catch(err => showResult('result2', err.message, true));
+    }
+
+    function exampleSelectView() {
+      db.select('users')
+        .view('row')
+        .limit(5)
+        .execute()
+        .then(result => showResult('result3', result))
+        .catch(err => showResult('result3', err.message, true));
+    }
+
+    function exampleSelectViewColumn() {
+      db.select('users')
+        .view('column')
+        .limit(5)
+        .execute()
+        .then(result => showResult('result3', result))
+        .catch(err => showResult('result3', err.message, true));
+    }
+
+    function exampleInsert() {
+      db.insert('users')
+        .values({ name: 'Alice', email: 'alice@example.com', status: 'active' })
+        .ifNotExists(true)
+        .execute()
+        .then(result => showResult('result4', result))
+        .catch(err => showResult('result4', err.message, true));
+    }
+
+    function exampleUpdate() {
+      db.update('users')
+        .set({ status: 'inactive', updated_at: 'CURRENT_TIMESTAMP' })
+        .where("email = 'alice@example.com'")
+        .execute()
+        .then(result => showResult('result5', result))
+        .catch(err => showResult('result5', err.message, true));
+    }
+
+    function exampleUpdateAll() {
+      db.update('users')
+        .set({ last_checked: 'CURRENT_TIMESTAMP' })
+        .where('*')
+        .execute()
+        .then(result => showResult('result6', result))
+        .catch(err => showResult('result6', err.message, true));
+    }
+
+    function exampleUpsert() {
+      db.upsert('users')
+        .key('email')
+        .values({ email: 'bob@example.com', name: 'Bob Updated', status: 'active' })
+        .execute()
+        .then(result => showResult('result7', result))
+        .catch(err => showResult('result7', err.message, true));
+    }
+
+    function exampleDelete() {
+      db.delete('users')
+        .where("status = 'inactive'")
+        .execute()
+        .then(result => showResult('result8', result))
+        .catch(err => showResult('result8', err.message, true));
+    }
+
+    function exampleDeleteIn() {
+      db.delete('users')
+        .whereIn('status', ['banned', 'deleted'])
+        .execute()
+        .then(result => showResult('result9', result))
+        .catch(err => showResult('result9', err.message, true));
+    }
+
+    function exampleCreateTable() {
+      db.createTable('users')
+        .ifNotExists(true)
+        .column('id', 'INTEGER')
+        .column('name', 'TEXT')
+        .column('email', 'TEXT')
+        .column('age', 'INTEGER', 'DEFAULT 0', 'CHECK age >= 0')
+        .column('status', 'TEXT', "DEFAULT 'active'")
+        .column('created_at', 'TEXT', 'DEFAULT CURRENT_TIMESTAMP')
+        .primaryKey('id')
+        .notNull('name', 'email')
+        .unique('email')
+        .autoinc('id')
+        .execute()
+        .then(result => showResult('result10', result))
+        .catch(err => showResult('result10', err.message, true));
+    }
+
+    function exampleCreateTableComplex() {
+      db.createTable('order_items')
+        .column('order_id', 'INTEGER')
+        .column('product_id', 'INTEGER')
+        .column('quantity', 'INTEGER', 'DEFAULT 1')
+        .column('price', 'REAL')
+        .primaryKey('order_id', 'product_id')
+        .notNull('order_id', 'product_id', 'price')
+        .foreignKey('order_id REFERENCES orders(id) ON DELETE CASCADE')
+        .foreignKey('product_id REFERENCES products(id)')
+        .withoutRowid(true)
+        .execute()
+        .then(result => showResult('result11', result))
+        .catch(err => showResult('result11', err.message, true));
+    }
+
+    function exampleDropTable() {
+      db.dropTable('temp_table', true)
+        .then(result => showResult('result12', result))
+        .catch(err => showResult('result12', err.message, true));
+    }
+
+    function exampleTransaction() {
+      db.begin()
+        .then(() => db.insert('users').values({name: 'Test', email: 'test@example.com'}).execute())
+        .then(() => db.update('users').set({status: 'active'}).where("email = 'test@example.com'").execute())
+        .then(() => db.commit())
+        .then(() => showResult('result13', { message: 'Transaction committed successfully' }))
+        .catch(err => {
+          showResult('result13', err.message, true);
+          return db.rollback();
+        });
+    }
+
+    function examplePagination() {
+      db.select('users')
+        .orderBy('id ASC')
+        .limit(10)
+        .offset(0)
+        .execute()
+        .then(result => {
+          const data = {
+            rows: result.data,
+            totalRows: result.headers['X-SQTP-Total-Rows'],
+            page: 1
+          };
+          showResult('result14', data);
+        })
+        .catch(err => showResult('result14', err.message, true));
+    }
+
+    function examplePagination2() {
+      db.select('users')
+        .orderBy('id ASC')
+        .limit(10)
+        .offset(10)
+        .execute()
+        .then(result => {
+          const data = {
+            rows: result.data,
+            totalRows: result.headers['X-SQTP-Total-Rows'],
+            page: 2
+          };
+          showResult('result14', data);
+        })
+        .catch(err => showResult('result14', err.message, true));
+    }
+  </script>
+</body>
+</html>

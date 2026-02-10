@@ -1,0 +1,91 @@
+WPP Project - Open Source Licenses
+===================================
+
+This project integrates code from multiple open source projects.
+Below is the complete license information for all components.
+
+## WPP Core Code
+
+Copyright (C) 2026 WPP Project Contributors
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+See LICENSE file for the complete GPL 3.0 text.
+
+## Third-Party Components
+
+### SQLite Database Engine
+- **License**: Public Domain
+- **Source**: third_party/sqlite/
+- **License File**: LICENSES/SQLITE-LICENSE
+- **Usage**: Modified and integrated into wpp-sqlite module
+- **Restrictions**: None - completely free to use and modify
+
+### TinyCC Compiler
+- **License**: GNU Lesser General Public License v2.1 (LGPL 2.1)
+- **Source**: third_party/tinycc/
+- **License File**: LICENSES/TINYCC-LICENSE
+- **Usage**: Wrapped in wpp-compiler module
+- **Restrictions**: Modifications must be open-sourced under LGPL
+
+### SQTP Protocol & JavaScript Libraries
+- **License**: MIT License
+- **Source**: docs/sqtp/ (protocol specification), lib/sqtp/ (JavaScript libraries)
+- **License File**: LICENSES/SQTP-LICENSE
+- **Components**:
+  * SQTP/1.0 Protocol Specification
+  * sqtp.xhr.promise.js - Promise-based client
+  * sqtp.xhr.callback.js - Callback-based client
+  * sqtp.fetch.js - Fetch API client
+- **Usage**: Can be used independently in any project
+- **Restrictions**: Must include MIT license text in redistributions
+
+### althttpd Web Server
+- **License**: Public Domain (expected, confirmation pending)
+- **Source**: third_party/althttpd/
+- **License File**: LICENSES/ALTHTTPD-LICENSE (to be added)
+- **Usage**: Modified and integrated into wpp-server module
+- **Restrictions**: None - completely free to use and modify
+
+## Module License Summary
+
+| Module | License | Can Modify | Must Share Source |
+|--------|---------|------------|-------------------|
+| wpp-core | GPL 3.0 | ✓ | ✓ |
+| wpp-sqlite | Public Domain | ✓ | ✗ |
+| wpp-compiler | LGPL 2.1 | ✓ | ✓ (if distributed) |
+| wpp-server | Public Domain | ✓ | ✗ |
+| sqtp-protocol | MIT | ✓ | ✗ |
+| sqtp-libraries | MIT | ✓ | ✗ |
+
+## License Compatibility
+
+The overall project is licensed under GPL 3.0, which is compatible with:
+- Public Domain code (SQLite, althttpd)
+- LGPL 2.1 code (TinyCC)
+- MIT License code (SQTP protocol and libraries)
+
+All components can be legally integrated under GPL 3.0.
+
+Note: SQTP protocol specification and JavaScript libraries are independently
+licensed under MIT License, allowing their use in non-GPL projects.
+
+## Source Code Availability
+
+The complete source code for WPP and all integrated components is available at:
+[Your repository URL here]
+
+## Attribution
+
+When distributing this software, you must:
+1. Include this NOTICE file
+2. Include all license files in the LICENSES/ directory
+3. Provide access to the source code (GPL requirement)
+4. Retain all copyright notices in source files
+
+## Contact
+
+For licensing questions, contact: [your-email@example.com]

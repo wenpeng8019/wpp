@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SQTP Fetch Client - Usage Examples</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      line-height: 1.6;
+    }
+    h1 { color: #333; border-bottom: 2px solid #28a745; padding-bottom: 10px; }
+    h2 { color: #555; margin-top: 30px; }
+    pre {
+      background: #f5f5f5;
+      padding: 15px;
+      border-radius: 5px;
+      overflow-x: auto;
+      border-left: 4px solid #28a745;
+    }
+    code { font-family: 'Courier New', monospace; }
+    .example { margin: 20px 0; }
+    button {
+      background: #28a745;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-right: 10px;
+      margin-bottom: 10px;
+    }
+    button:hover { background: #218838; }
+    .result {
+      background: #e9ecef;
+      padding: 15px;
+      border-radius: 5px;
+      margin-top: 10px;
+      white-space: pre-wrap;
+      font-family: monospace;
+      font-size: 12px;
+    }
+    .error { background: #f8d7da; color: #721c24; }
+    .success { background: #d4edda; color: #155724; }
+    .badge {
+      display: inline-block;
+      background: #28a745;
+      color: white;
+      padding: 2px 8px;
+      border-radius: 3px;
+      font-size: 12px;
+      margin-left: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>SQTP/1.0 Client Library - Fetch API Implementation <span class="badge">Modern</span></h1>
+  <p>基于 Fetch API 的 SQTP 协议 JavaScript SDK 使用示例（Promise原生，更现代的实现）</p>
+
+  <h2>1. 初始化</h2>
+  <div class="example">
+    <pre><code>const db = new SQTP('http://localhost:8080/db/main', {
+  debug: true,
+  timeout: 30000
+});</code></pre>
+  </div>
+
+  <h2>2. SELECT 查询</h2>
+  <div class="example">
+    <h3>基本查询（使用 async/await）</h3>
+    <button onclick="exampleSelect1()">执行查询</button>
+    <pre><code>// Fetch API 原生支持 async/await，代码更简洁
+async function getActiveUsers() {
+  const result = await db.select('users')
+    .columns('id', 'name', 'email')
+    .where("status = 'active'")
+    .orderBy('name ASC')
+    .limit(10)
+    .execute();
+  
+  return result.data;
+}
+
+// 或者使用传统 Promise 链
+db.select('users')
+  .columns('id', 'name', 'email')
+  .where("status = 'active'")
+  .orderBy('name ASC')
+  .limit(10)
+  .execute()
+  .then(result => console.log(result.data));</code></pre>
+    <div id="result1" class="result" style="display:none;"></div>
+  </div>
+
+  <div class="example">
+    <h3>复杂查询（JOIN + WHERE-IN）</h3>
+    <button onclick="exampleSelect2()">执行查询</button>
+    <pre><code>db.select('users')
+  .columns('users.id', 'users.name', 'COUNT(orders.id) AS order_count')
+  .leftJoin('orders', 'users.id = orders.user_id')
+  .whereIn('users.status', ['active', 'pending'])
+  .groupBy('users.id', 'users.name')
+  .having('COUNT(orders.id) > 0')
+  .orderBy('order_count DESC')
+  .limit(20)
+  .execute()
+  .then(result => console.log(result.data));</code></pre>
+    <div id="result2" class="result" style="display:none;"></div>
+  </div>
+
+  <div class="example">
+    <h3>并行查询（Promise.all）</h3>
+    <button onclick="exampleParallel()">并行执行</button>
+    <pre><code>// Fetch API 可以轻松实现并行请求
+async function getMultipleTables() {
+  const [users, orders, products] = await Promise.all([
+    db.select('users').limit(10).execute(),
+    db.select('orders').limit(10).execute(),
+    db.select('products').limit(10).execute()
+  ]);
+  
+  return { users: users.data, orders: orders.data, products: products.data };
+}</code></pre>
+    <div id="result15" class="result" style="display:none;"></div>
+  </div>
+
+  <h2>3. INSERT 插入</h2>
+  <div class="example">
+    <button onclick="exampleInsert()">执行插入</button>
+    <pre><code>db.insert('users')
+  .values({
+    name: 'Alice',
+    email: 'alice@example.com',
+    status: 'active'
+  })
+  .ifNotExists(true)
+  .execute()
+  .then(result => console.log('Inserted:', result));</code></pre>
+    <div id="result4" class="result" style="display:none;"></div>
+  </div>
+
+  <h2>4. UPDATE 更新</h2>
+  <div class="example">
+    <button onclick="exampleUpdate()">执行更新</button>
+    <pre><code>db.update('users')
+  .set({ status: 'inactive', updated_at: 'CURRENT_TIMESTAMP' })
+  .where("email = 'alice@example.com'")
+  .execute()
+  .then(result => console.log('Updated:', result));</code></pre>
+    <div id="result5" class="result" style="display:none;"></div>
+  </div>
+
+  <h2>5. UPSERT 插入或更新</h2>
+  <div class="example">
+    <button onclick="exampleUpsert()">执行 UPSERT</button>
+    <pre><code>db.upsert('users')
+  .key('email')  // 基于 email 判断是否存在
+  .values({
+    email: 'bob@example.com',
+    name: 'Bob Updated',
+    status: 'active'
+  })
+  .execute();</code></pre>
+    <div id="result7" class="result" style="display:none;"></div>
+  </div>
+
+  <h2>6. DELETE 删除</h2>
+  <div class="example">
+    <button onclick="exampleDelete()">执行删除</button>
+    <pre><code>db.delete('users')
+  .where("status = 'inactive'")
+  .execute()
+  .then(result => console.log('Deleted:', result));</code></pre>
+    <div id="result8" class="result" style="display:none;"></div>
+  </div>
+
+  <h2>7. CREATE TABLE 创建表</h2>
+  <div class="example">
+    <button onclick="exampleCreateTable()">创建表</button>
+    <pre><code>db.createTable('users')
+  .ifNotExists(true)
+  .column('id', 'INTEGER')
+  .column('name', 'TEXT')
+  .column('email', 'TEXT')
+  .column('age', 'INTEGER', 'DEFAULT 0', 'CHECK age >= 0')
+  .column('status', 'TEXT', "DEFAULT 'active'")
+  .column('created_at', 'TEXT', 'DEFAULT CURRENT_TIMESTAMP')
+  .primaryKey('id')
+  .notNull('name', 'email')
+  .unique('email')
+  .autoinc('id')
+  .execute();</code></pre>
+    <div id="result10" class="result" style="display:none;"></div>
+  </div>
+
+  <h2>8. DROP TABLE 删除表</h2>
+  <div class="example">
+    <button onclick="exampleDropTable()">删除表</button>
+    <pre><code>db.dropTable('temp_table', true)  // true = IF EXISTS
+  .then(result => console.log('Dropped:', result));</code></pre>
+    <div id="result12" class="result" style="display:none;"></div>
+  </div>
+
+  <h2>9. 事务控制（async/await 风格）</h2>
+  <div class="example">
+    <button onclick="exampleTransaction()">执行事务</button>
+    <pre><code>// Fetch API 让事务控制更优雅
+async function transferBalance() {
+  try {
+    await db.begin();
+    
+    await db.update('accounts')
+      .set({ balance: 'balance - 100' })
+      .where("id = 1")
+      .execute();
+    
+    await db.update('accounts')
+      .set({ balance: 'balance + 100' })
+      .where("id = 2")
+      .execute();
+    
+    await db.commit();
+    console.log('Transaction committed');
+  } catch (err) {
+    console.error('Transaction failed:', err);
+    await db.rollback();
+  }
+}</code></pre>
+    <div id="result13" class="result" style="display:none;"></div>
+  </div>
+
+  <h2>10. 错误处理</h2>
+  <div class="example">
+    <button onclick="exampleErrorHandling()">测试错误处理</button>
+    <pre><code>// Fetch API 的错误处理更标准
+async function safeQuery() {
+  try {
+    const result = await db.select('nonexistent_table')
+      .execute();
+    return result.data;
+  } catch (error) {
+    if (error.message.includes('timeout')) {
+      console.error('请求超时');
+    } else if (error.message.includes('HTTP 404')) {
+      console.error('表不存在');
+    } else {
+      console.error('未知错误:', error);
+    }
+    return null;
+  }
+}</code></pre>
+    <div id="result16" class="result" style="display:none;"></div>
+  </div>
+
+  <h2>11. Fetch vs XHR 对比</h2>
+  <div class="example">
+    <table style="width:100%; border-collapse: collapse;">
+      <thead>
+        <tr style="background: #f8f9fa;">
+          <th style="border: 1px solid #dee2e6; padding: 10px; text-align: left;">特性</th>
+          <th style="border: 1px solid #dee2e6; padding: 10px; text-align: left;">Fetch API (sqtp.fetch.js)</th>
+          <th style="border: 1px solid #dee2e6; padding: 10px; text-align: left;">XMLHttpRequest (sqtp.xhr.js)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="border: 1px solid #dee2e6; padding: 10px;">Promise 支持</td>
+          <td style="border: 1px solid #dee2e6; padding: 10px;">✅ 原生 Promise</td>
+          <td style="border: 1px solid #dee2e6; padding: 10px;">⚠️ 手动包装</td>
+        </tr>
+        <tr>
+          <td style="border: 1px solid #dee2e6; padding: 10px;">async/await</td>
+          <td style="border: 1px solid #dee2e6; padding: 10px;">✅ 完美支持</td>
+          <td style="border: 1px solid #dee2e6; padding: 10px;">✅ 支持</td>
+        </tr>
+        <tr>
+          <td style="border: 1px solid #dee2e6; padding: 10px;">浏览器支持</td>
+          <td style="border: 1px solid #dee2e6; padding: 10px;">⚠️ 现代浏览器（IE 不支持）</td>
+          <td style="border: 1px solid #dee2e6; padding: 10px;">✅ 所有浏览器</td>
+        </tr>
+        <tr>
+          <td style="border: 1px solid #dee2e6; padding: 10px;">代码简洁度</td>
+          <td style="border: 1px solid #dee2e6; padding: 10px;">✅ 更简洁</td>
+          <td style="border: 1px solid #dee2e6; padding: 10px;">⚠️ 相对冗长</td>
+        </tr>
+        <tr>
+          <td style="border: 1px solid #dee2e6; padding: 10px;">超时控制</td>
+          <td style="border: 1px solid #dee2e6; padding: 10px;">✅ AbortController</td>
+          <td style="border: 1px solid #dee2e6; padding: 10px;">✅ timeout 属性</td>
+        </tr>
+        <tr>
+          <td style="border: 1px solid #dee2e6; padding: 10px;">请求取消</td>
+          <td style="border: 1px solid #dee2e6; padding: 10px;">✅ AbortController</td>
+          <td style="border: 1px solid #dee2e6; padding: 10px;">✅ abort() 方法</td>
+        </tr>
+        <tr>
+          <td style="border: 1px solid #dee2e6; padding: 10px;">推荐场景</td>
+          <td style="border: 1px solid #dee2e6; padding: 10px;">✅ 新项目，现代应用</td>
+          <td style="border: 1px solid #dee2e6; padding: 10px;">✅ 兼容性要求高</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <script src="sqtp.fetch.js"></script>
+  <script>
+    const db = new SQTP('http://localhost:8080/db/main', { debug: true });
+
+    function showResult(id, result, isError) {
+      const el = document.getElementById(id);
+      el.style.display = 'block';
+      el.className = 'result ' + (isError ? 'error' : 'success');
+      el.textContent = JSON.stringify(result, null, 2);
+    }
+
+    function exampleSelect1() {
+      db.select('users')
+        .columns('id', 'name', 'email')
+        .where("status = 'active'")
+        .orderBy('name ASC')
+        .limit(10)
+        .execute()
+        .then(result => showResult('result1', result))
+        .catch(err => showResult('result1', { error: err.message }, true));
+    }
+
+    function exampleSelect2() {
+      db.select('users')
+        .columns('users.id', 'users.name', 'COUNT(orders.id) AS order_count')
+        .leftJoin('orders', 'users.id = orders.user_id')
+        .whereIn('users.status', ['active', 'pending'])
+        .groupBy('users.id', 'users.name')
+        .having('COUNT(orders.id) > 0')
+        .orderBy('order_count DESC')
+        .limit(20)
+        .execute()
+        .then(result => showResult('result2', result))
+        .catch(err => showResult('result2', { error: err.message }, true));
+    }
+
+    async function exampleParallel() {
+      try {
+        const [users, orders, products] = await Promise.all([
+          db.select('users').limit(5).execute(),
+          db.select('orders').limit(5).execute(),
+          db.select('products').limit(5).execute()
+        ]);
+        
+        showResult('result15', {
+          users: users.data,
+          orders: orders.data,
+          products: products.data
+        });
+      } catch (err) {
+        showResult('result15', { error: err.message }, true);
+      }
+    }
+
+    function exampleInsert() {
+      db.insert('users')
+        .values({ name: 'Alice', email: 'alice@example.com', status: 'active' })
+        .ifNotExists(true)
+        .execute()
+        .then(result => showResult('result4', result))
+        .catch(err => showResult('result4', { error: err.message }, true));
+    }
+
+    function exampleUpdate() {
+      db.update('users')
+        .set({ status: 'inactive', updated_at: 'CURRENT_TIMESTAMP' })
+        .where("email = 'alice@example.com'")
+        .execute()
+        .then(result => showResult('result5', result))
+        .catch(err => showResult('result5', { error: err.message }, true));
+    }
+
+    function exampleUpsert() {
+      db.upsert('users')
+        .key('email')
+        .values({ email: 'bob@example.com', name: 'Bob Updated', status: 'active' })
+        .execute()
+        .then(result => showResult('result7', result))
+        .catch(err => showResult('result7', { error: err.message }, true));
+    }
+
+    function exampleDelete() {
+      db.delete('users')
+        .where("status = 'inactive'")
+        .execute()
+        .then(result => showResult('result8', result))
+        .catch(err => showResult('result8', { error: err.message }, true));
+    }
+
+    function exampleCreateTable() {
+      db.createTable('users')
+        .ifNotExists(true)
+        .column('id', 'INTEGER')
+        .column('name', 'TEXT')
+        .column('email', 'TEXT')
+        .column('age', 'INTEGER', 'DEFAULT 0', 'CHECK age >= 0')
+        .column('status', 'TEXT', "DEFAULT 'active'")
+        .column('created_at', 'TEXT', 'DEFAULT CURRENT_TIMESTAMP')
+        .primaryKey('id')
+        .notNull('name', 'email')
+        .unique('email')
+        .autoinc('id')
+        .execute()
+        .then(result => showResult('result10', result))
+        .catch(err => showResult('result10', { error: err.message }, true));
+    }
+
+    function exampleDropTable() {
+      db.dropTable('temp_table', true)
+        .then(result => showResult('result12', result))
+        .catch(err => showResult('result12', { error: err.message }, true));
+    }
+
+    async function exampleTransaction() {
+      try {
+        await db.begin();
+        await db.insert('users').values({name: 'Test', email: 'test@example.com'}).execute();
+        await db.update('users').set({status: 'active'}).where("email = 'test@example.com'").execute();
+        await db.commit();
+        showResult('result13', { message: 'Transaction committed successfully' });
+      } catch (err) {
+        showResult('result13', { error: err.message }, true);
+        await db.rollback();
+      }
+    }
+
+    async function exampleErrorHandling() {
+      try {
+        const result = await db.select('nonexistent_table').execute();
+        showResult('result16', result);
+      } catch (error) {
+        let errorType = '未知错误';
+        if (error.message.includes('timeout')) {
+          errorType = '请求超时';
+        } else if (error.message.includes('HTTP 404')) {
+          errorType = '表不存在';
+        } else if (error.message.includes('HTTP 500')) {
+          errorType = '服务器错误';
+        }
+        showResult('result16', { errorType, message: error.message }, true);
+      }
+    }
+  </script>
+</body>
+</html>
