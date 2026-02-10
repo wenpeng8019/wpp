@@ -1,167 +1,245 @@
-# WPP Project
+# WPP - Web Programming Platform
 
-一个模块化的 C 语言项目，集成了 HTTP 服务器、数据库引擎和动态编译器。
+> **Single-command web server: Any folder → Web app with SQLite+SQTP queries and C script CGI**
 
-## 特性
-
-- 🌐 **HTTP 服务器**: 基于 althttpd，轻量级且安全
-- 💾 **数据库引擎**: 集成 SQLite，提供强大的数据持久化能力
-- ⚡ **动态编译**: 使用 TinyCC 实现运行时 C 代码编译
-- 🧩 **模块化设计**: 清晰的模块边界，易于维护和扩展
-- 📖 **开源合规**: 遵守所有第三方库的许可证要求
-
-## 快速开始
-
-### 依赖
-
-- CMake 3.10+
-- GCC 或 Clang
-- Make
-
-### 构建
+Transform any folder into a fully-featured web application with one command. No complex setup, no configuration files—just pure simplicity.
 
 ```bash
-# 使用 CMake（推荐）
-mkdir build && cd build
-cmake ..
-make
-
-# 或使用 Makefile
-make
+./wpp
+# Server started on http://localhost:8080
+# Your folder is now a web app! 🚀
 ```
 
-### 运行
+## ✨ Core Features
+
+### 🗄️ **SQTP Protocol - RESTful Database Queries**
+Query SQLite databases directly via HTTP using SQL-like URLs:
 
 ```bash
+# SELECT query
+curl "http://localhost:8080/SELECT%20*%20FROM%20users%20WHERE%20status='active'"
+
+# INSERT data
+curl -X POST "http://localhost:8080/INSERT%20INTO%20users%20VALUES('Alice',25)"
+
+# JSON response ready for JavaScript fetch()
+```
+
+**JavaScript Client:**
+```javascript
+// Use provided SQTP client library
+fetch('/shm', {
+    method: 'SELECT',
+    headers: { 'TABLE': 'users', 'WHERE': 'age > 18' }
+}).then(r => r.json()).then(data => console.log(data));
+```
+
+### 🔥 **C Script CGI - Runtime Compilation**
+Write `.c` files as CGI scripts—they compile and run on-the-fly via TinyCC:
+
+**hello.c:**
+```c
+#include <stdio.h>
+int main() {
+    printf("Content-Type: text/html\r\n\r\n");
+    printf("<h1>Hello from C!</h1>");
+    printf("<p>Query: %s</p>", getenv("QUERY_STRING"));
+    return 0;
+}
+```
+
+Access: `http://localhost:8080/hello.c?name=world` ✅ No compilation needed!
+
+### ⚡ **One-Command Deployment**
+```bash
+# Build once
+make
+
+# Run anywhere
 ./build/wpp
+# Opens browser automatically → Your web app is live!
 ```
 
-## 项目结构
+## 🚀 Quick Start
 
-```
-wpp/
-├── include/wpp/          # 公共 API 头文件
-│   ├── wpp.h            # 主头文件
-│   ├── core.h           # 核心功能
-│   ├── server.h         # HTTP 服务器
-│   ├── database.h       # 数据库
-│   └── compiler.h       # 编译器
-│
-├── modules/             # 功能模块
-│   ├── wpp-core/        # 核心模块（GPL 3.0）
-│   ├── wpp-sqlite/      # 数据库模块（Public Domain）
-│   ├── wpp-compiler/    # 编译器模块（LGPL 2.1）
-│   └── wpp-server/      # HTTP 服务器模块（Public Domain）
-│
-├── src/                 # 主程序
-├── third_party/         # 第三方源码（参考）
-│   ├── sqlite/          # SQLite 源码
-│   ├── tinycc/          # TinyCC 源码
-│   └── althttpd/        # althttpd 源码
-│
-├── docs/                # 文档
-│   ├── design/          # 设计文档
-│   └── api/             # API 文档
-│
-├── LICENSES/            # 许可证文件
-├── LICENSE              # 主许可证（GPL 3.0）
-├── NOTICE               # 第三方组件归属
-└── LICENSES.md          # 许可证指南
-```
+### Prerequisites
+- macOS / Linux
+- CMake 3.10+
+- C compiler (GCC/Clang)
 
-## 架构
-
-WPP 采用模块化架构，每个模块都有明确的职责：
-
-- **wpp-core**: 提供日志、配置、内存管理等基础功能
-- **wpp-sqlite**: 封装 SQLite，提供简化的数据库 API
-- **wpp-compiler**: 封装 TinyCC，实现动态 C 代码编译
-- **wpp-server**: 基于 althttpd，提供现代化的 HTTP 服务
-
-详细架构设计请参考 [ARCHITECTURE.md](docs/design/ARCHITECTURE.md)
-
-## 许可证
-
-本项目使用 **GPL 3.0** 许可证，这与集成的第三方库兼容：
-
-| 组件 | 原始许可证 | 使用方式 |
-|------|-----------|---------|
-| SQLite | Public Domain | 直接修改和集成 |
-| TinyCC | LGPL 2.1 | 封装调用（符合 LGPL） |
-| althttpd | Public Domain | 直接修改和集成 |
-
-详细信息请参考：
-- [LICENSE](LICENSE) - 主许可证
-- [NOTICE](NOTICE) - 第三方组件归属
-- [LICENSES.md](LICENSES.md) - 许可证合规指南
-
-## 第三方库
-
-### SQLite (Public Domain)
-- **功能**: 嵌入式关系数据库
-- **许可**: 公有领域，完全自由使用
-- **来源**: https://sqlite.org/
-
-### TinyCC (LGPL 2.1)
-- **功能**: 快速的 C 编译器
-- **许可**: LGPL 2.1
-- **来源**: https://bellard.org/tcc/
-
-### althttpd (Public Domain)
-- **功能**: 轻量级 HTTP 服务器
-- **许可**: 公有领域（预期）
-- **来源**: https://sqlite.org/althttpd/
-
-## 开发
-
-### 添加新模块
-
-1. 在 `modules/` 下创建新目录
-2. 添加 `CMakeLists.txt`
-3. 在 `include/wpp/` 添加公共 API
-4. 更新主 `CMakeLists.txt`
-
-### 编码规范
-
-- 使用 C11 标准
-- 遵循项目的代码风格
-- 所有公共 API 都有文档注释
-- 修改第三方代码时添加修改说明
-
-### 测试
-
+### Build & Run
 ```bash
-cd build
-make test
+# 1. Clone & Build
+git clone https://github.com/wenpeng8019/wpp.git
+cd wpp
+mkdir build && cd build
+cmake .. && make
+
+# 2. Start server (from project root)
+cd ..
+./build/wpp
+
+# 3. Test C CGI
+curl http://localhost:8080/hello.c
+
+# 4. Test SQTP query
+curl "http://localhost:8080/SELECT%20*%20FROM%20users"
 ```
 
-## 贡献
+### Create Your First C Script
+```bash
+cat > test.c << 'EOF'
+#include <stdio.h>
+#include <time.h>
 
-欢迎贡献！请确保：
+int main() {
+    printf("Content-Type: text/html\r\n\r\n");
+    printf("<h1>Server Time</h1>");
+    
+    time_t now = time(NULL);
+    printf("<p>%s</p>", ctime(&now));
+    
+    return 0;
+}
+EOF
 
-1. 遵守相关的开源许可证
-2. 添加适当的测试
-3. 更新文档
-4. 在提交信息中清晰描述更改
+curl http://localhost:8080/test.c
+# ✨ C script executed instantly!
+```
 
-## 联系
+## 📖 Use Cases
 
-- 项目主页: [待添加]
-- 问题反馈: [待添加]
-- 邮件: [待添加]
+### 1. **Rapid Prototyping**
+Build data-driven web apps without backend frameworks:
+```c
+// api.c - Dynamic API endpoint
+#include <stdio.h>
+#include <sqlite3.h>
 
-## 致谢
+int main() {
+    printf("Content-Type: application/json\r\n\r\n");
+    
+    sqlite3 *db;
+    sqlite3_open("data.db", &db);
+    // ... query and output JSON
+    
+    return 0;
+}
+```
 
-感谢以下开源项目：
+### 2. **Database Web Interface**
+Query SQLite databases via browser with SQTP JavaScript client:
+```html
+<script src="/lib/sqtp/sqtp.fetch.js"></script>
+<script>
+// Real-time database queries from frontend
+sqtp.select('/shm', 'users', 'age > 18')
+    .then(rows => renderTable(rows));
+</script>
+```
 
-- SQLite 团队
-- TinyCC (Fabrice Bellard 等)
-- althttpd (D. Richard Hipp)
+### 3. **Embedded Web UI**
+Perfect for IoT devices, local tools, or embedded systems—single binary, no dependencies.
 
-## 路线图
+## 🏗️ Architecture
 
-- [x] 项目结构搭建
-- [x] 核心模块基础功能
+**Three-Layer Process Model:**
+```
+Main Process (Port 8080)
+  └─ Request Handler (per connection)
+      └─ CGI Subprocess (C script execution)
+          ├─ Traditional CGI → execl(binary)
+          └─ C Script → TinyCC compile + run
+```
+📚 Documentation
+
+- [QUICKSTART.md](docs/QUICKSTART.md) - Detailed getting started guide
+- [SQTP Protocol](docs/sqtp/) - Complete SQTP specification (8 operations)
+- [Architecture](docs/design/ARCHITECTURE.md) - System design and internals
+- [TinyCC Mechanism](third_party/TINYCC_MECHANISM.md) - How C script compilation works
+
+## 🛠️ Advanced Configuration
+
+### Custom Port & Root Directory
+```bash
+./build/wpp --port 8080 --root /path/to/webroot
+```
+
+### Multiple Instances
+```bash
+# Instance 1
+./build/wpp --port 8080 &
+
+# Instance 2  
+./build/wpp --port 8081 &
+```
+
+### C Script CGI Environment
+All standard CGI variables are available:
+```c
+getenv("REQUEST_METHOD");  // GET, POST
+getenv("QUERY_STRING");     // URL parameters
+getenv("REMOTE_ADDR");      // Client IP
+getenv("HTTP_USER_AGENT");  // Browser info
+// ... 30 CGI environment variables
+```
+
+## 🤝 Contributing
+
+Contributions welcome! Areas of interest:
+- 🌟 More SQTP operations (JOIN, GROUP BY)
+- 🔒 HTTPS/TLS support
+- 📦 Package managers (Homebrew, apt)
+- 🧪 Test coverage
+- 📝 Documentation improvements
+
+## 📄 License
+
+**GPL 3.0** - Compatible with all included components:
+
+| Component | License | Usage |
+|-----------|---------|-------|
+| SQLite | Public Domain | Embedded database |
+| TinyCC | LGPL 2.1 | Runtime C compiler |
+| althttpd | Public Domain | HTTP server base |
+| yyjson | MIT | JSON parser |
+
+See [LICENSE](LICENSE), [NOTICE](NOTICE), and [LICENSES.md](LICENSES.md) for details.
+
+## 🙏 Acknowledgments
+
+Built on the shoulders of giants:
+- **SQLite** - D. Richard Hipp and team
+- **TinyCC** - Fabrice Bellard
+- **althttpd** - D. Richard Hipp
+- **yyjson** - YaoYuan
+
+## 🎯 Project Status
+
+**Version**: 0.1.0  
+**Status**: Alpha (Production-ready core, active development)
+
+**Completed:**
+- ✅ HTTP server with fork-based concurrency
+- ✅ SQTP protocol (8 operations)
+- ✅ TinyCC C script CGI
+- ✅ SQLite integration with shared memory
+- ✅ JavaScript client libraries
+- ✅ Process isolation and security model
+
+**Roadmap:**
+- 🚧 SQTP JOIN operations
+- 🚧 WebSocket support
+- 🚧 HTTPS/TLS
+- 🚧 Performance optimizations
+- 🚧 Extended platform support (Windows)
+
+---
+
+**Made with ❤️ for rapid web development**  
+**Star ⭐ this repo if you find it useful!**
+
+GitHub: [wenpeng8019/wpp](https://github.com/wenpeng8019/wpp)
 - [ ] SQLite 集成和封装
 - [ ] TinyCC 集成和封装
 - [ ] althttpd 现代化改造
