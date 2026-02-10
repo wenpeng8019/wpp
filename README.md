@@ -203,6 +203,7 @@ Contributions welcome! Areas of interest:
 | TinyCC | LGPL 2.1 | Runtime C compiler |
 | althttpd | Public Domain | HTTP server base |
 | yyjson | MIT | JSON parser |
+| zlib | zlib | Compression library |
 
 See [LICENSE](LICENSE), [NOTICE](NOTICE), and [LICENSES.md](LICENSES.md) for details.
 
@@ -213,6 +214,7 @@ Built on the shoulders of giants:
 - **TinyCC** - Fabrice Bellard
 - **althttpd** - D. Richard Hipp
 - **yyjson** - YaoYuan
+- **zlib** - Jean-loup Gailly and Mark Adler
 
 ## 🎯 Project Status
 

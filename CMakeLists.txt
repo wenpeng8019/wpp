@@ -195,6 +195,51 @@ message(STATUS "  Source: ${YYJSON_SOURCE}")
 message(STATUS "  Mode: Static library (source build)")
 
 # =============================================================================
+# zlib 静态库
+# =============================================================================
+
+# zlib 源文件路径
+set(ZLIB_DIR ${CMAKE_SOURCE_DIR}/third_party/zlib)
+
+# zlib 核心源文件
+set(ZLIB_SOURCES
+    ${ZLIB_DIR}/adler32.c
+    ${ZLIB_DIR}/compress.c
+    ${ZLIB_DIR}/crc32.c
+    ${ZLIB_DIR}/deflate.c
+    ${ZLIB_DIR}/infback.c
+    ${ZLIB_DIR}/inffast.c
+    ${ZLIB_DIR}/inflate.c
+    ${ZLIB_DIR}/inftrees.c
+    ${ZLIB_DIR}/trees.c
+    ${ZLIB_DIR}/uncompr.c
+    ${ZLIB_DIR}/zutil.c
+)
+
+# 创建 zlib 静态库
+add_library(zlib STATIC ${ZLIB_SOURCES})
+
+# zlib 编译选项
+target_compile_definitions(zlib PRIVATE
+    # zlib 默认配置即可
+)
+
+# zlib 调试选项（用于学习和断点调试）
+target_compile_options(zlib PRIVATE
+    -g                        # 生成调试符号
+    -O0                       # 禁用优化，便于单步调试
+    -Wno-implicit-fallthrough # 忽略 switch fallthrough 警告
+)
+
+# 包含 zlib 头文件目录
+target_include_directories(zlib PUBLIC ${ZLIB_DIR})
+
+message(STATUS "zlib Configuration:")
+message(STATUS "  Source: ${ZLIB_DIR}/*.c")
+message(STATUS "  Mode: Static library (source build)")
+message(STATUS "  Version: 1.3.1")
+
+# =============================================================================
 # OpenSSL（用于 TLS 支持）
 # =============================================================================
 
@@ -257,11 +302,12 @@ if(OPENSSL_FOUND)
     target_include_directories(wpp PRIVATE ${OPENSSL_INCLUDE_DIR})
 endif()
 
-# 链接 SQLite、TinyCC、yyjson 和 OpenSSL 库
+# 链接 SQLite、TinyCC、yyjson、zlib 和 OpenSSL 库
 target_link_libraries(wpp 
     sqlite3
     tcc
     yyjson
+    zlib
 )
 
 # 链接 OpenSSL

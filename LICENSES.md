@@ -39,7 +39,34 @@ SQLite 的作者已经将其放入公有领域，可以在任何项目中自由�
 
 SQTP 协议和客户端库采用 MIT License，允许在任何项目中自由使用，包括商业闭源项目。这与 WPP 主项目的 GPL 3.0 许可证独立。
 
-### 4. althttpd - 需要确认
+### 4. yyjson - MIT License
+- **许可类型**: MIT License
+- **权限**: 可以在商业和开源项目中自由使用、修改、分发
+- **要求**: 
+  - 在软件副本中包含版权声明和许可证声明
+  - 无需公开源代码
+  - 无需使用相同许可证
+- **适合**: ✅ 最宽松的许可证之一，可用于任何项目
+- **来源**: `/third_party/yyjson/`
+- **许可证文件**: `third_party/yyjson/LICENSE`
+
+yyjson 是一个高性能的 JSON 解析库，采用 MIT License，允许在任何项目中自由使用。
+
+### 5. zlib - zlib License
+- **许可类型**: zlib License（类似 MIT/BSD，非常宽松）
+- **权限**: 可以在商业和开源项目中自由使用、修改、分发
+- **要求**: 
+  - 如果分发修改后的源代码，必须标注修改内容
+  - 不得声称修改后的版本是原始版本
+  - 版权声明不能被移除或修改
+- **适合**: ✅ 非常宽松，可用于任何项目
+- **来源**: `/third_party/zlib/`
+- **版本**: 1.3.1
+- **许可证文件**: `LICENSES/ZLIB-LICENSE`
+
+zlib 是业界标准的压缩库，使用非常宽松的 zlib License，可以自由用于商业和开源项目。
+
+### 6. althttpd - 需要确认
 - **状态**: 源码获取中
 - **预期**: Public Domain（SQLite 项目系列通常是公有领域）
 - **来源**: `/third_party/althttpd/`

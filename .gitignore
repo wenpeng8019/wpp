@@ -24,3 +24,5 @@ out/
 # OS files
 .DS_Store
 Thumbs.db
+# PID file
+.pid
