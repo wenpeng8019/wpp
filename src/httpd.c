@@ -3403,8 +3403,18 @@ void ProcessOneRequest(int forceClose, int socketId) {
                 CgiStartFailure(px[1], 444/* 日志：dup() 失败 */, "CGI cannot dup() file descriptor 0");
             }
 
-            // 关闭所有余留的文件描述符（避免文件描述符泄漏）
-            for (i = 3; close(i) == 0; i++) {}
+            // [2026-02-11] 注释掉 fd 批量关闭逻辑
+            // 原设计：关闭所有 fd≥3 的文件描述符，防止泄漏到 CGI 子进程
+            // 现在问题：buildins 虚拟文件系统需要保留这些 fd（fd=3-12），供 TCC 运行时访问
+            // 泄漏检查：
+            //   ✅ CGI 子进程退出时，OS 自动关闭所有打开的 fd（进程资源回收机制）
+            //   ✅ 不会造成系统级 fd 泄漏
+            //   ⚠️  管道 fd (px[0], px[1], py[0], py[1]) 会继承到 CGI，但因为：
+            //      - px[0], py[1] 已在请求处理进程中关闭
+            //      - px[1], py[0] 已被 dup 到 stdout/stdin（会在进程退出时关闭）
+            //      - 即使有额外副本，进程退出时也会自动清理
+            // 设计权衡：支持 buildins 机制 > 手动管理少量 fd 副本
+            // for (i = 3; close(i) == 0; i++) {}
 
             // 移动到 CGI 程序所在的目录
             if (chdir(zDir)) {

@@ -13,12 +13,6 @@
 #include <sys/unistd.h>
 #include <stdio.h>
 
-typedef struct http_tls {
-    const char*                 certFile;                   // TLS 证书文件路径
-    const char*                 keyFile;                    // TLS 私钥文件路径
-    int                         tlsPort;                    // TLS 监听端口
-} http_tls_st;
-
 typedef struct http_params {
 
     const char*                 csRoot;                     // 网站的根目录
@@ -33,12 +27,22 @@ typedef struct http_params {
 
 } http_params_st;
 
+typedef struct http_tls {
+    const char*                 certFile;                   // TLS 证书文件路径
+    const char*                 keyFile;                    // TLS 私钥文件路径
+    int                         tlsPort;                    // TLS 监听端口
+} http_tls_st;
+
 // SQTP 需要的工具函数
 char* GetFirstElement(char *zInput, char **zLeftOver);
 char* StrDup(const char *zSrc);
 void RemoveNewline(char *z);
 char* althttpd_fgets(char *zBuf, int nBuf, FILE *in);
+#ifdef ENABLE_TLS
 int althttpd_printf(const char *zFormat, ...);
+#else
+#define althttpd_printf printf
+#endif
 void MakeLogEntry(int completed, int lineno);
 
 // SQTP 处理函数（参数传递）
@@ -46,6 +50,10 @@ void httpd_sqtp(char* method, char* script, char* protocol, size_t* out);
 
 // TinyCC CGI 处理函数
 void httpd_cgi_c(char* method, char* script, char* protocol, size_t* out);
+
+// 预配置的 TCCState（在 main 中初始化，fork 后子进程继承）
+typedef struct TCCState TCCState;
+extern TCCState *cgi_tcc_state;
 
 /**
  * @brief HTTP 服务器主函数

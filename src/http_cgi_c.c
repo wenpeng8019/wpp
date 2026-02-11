@@ -14,10 +14,14 @@
 #include <string.h>
 #include <unistd.h>
 #include <libtcc.h>
+#include "tcc_evn.h"
 
 // 前向声明
 static void cgi_c_error_func(void *opaque, const char *msg);
 static int cgi_c_read_file(const char* filename, char** content, size_t* size);
+
+// 使用 main() 中预配置的 TCCState（fork 后继承）
+extern TCCState *cgi_tcc_state;
 
 // TinyCC CGI 主处理函数
 // 注意：此函数在 CGI 子子进程中运行，stdout 已重定向到管道
@@ -38,35 +42,18 @@ void httpd_cgi_c(char* method, char* script, char* protocol, size_t* out) {
         exit(1);  // 非零退出码表示错误
     }
     
-    // 创建 TCC 状态
-    TCCState *s = tcc_new();
+    // 使用预配置的 TCCState（由 fork 继承，无需重新创建）
+    TCCState *s = cgi_tcc_state;
     if (!s) {
         free(source_code);
         printf("Status: 500 Internal Server Error\r\n");
         printf("Content-Type: text/plain\r\n\r\n");
-        printf("Error: Failed to create TCC state\n");
+        printf("Error: TCC state not initialized\n");
         exit(1);
     }
     
     // 设置错误回调（错误信息输出到 stderr，父进程可捕获）
     tcc_set_error_func(s, NULL, cgi_c_error_func);
-    
-    // 设置 TCC 库路径（用于查找 libtcc1.a 等运行时文件）
-    tcc_set_lib_path(s, "third_party/tinycc/build/runtime");
-    
-    // 设置输出类型为内存执行
-    tcc_set_output_type(s, TCC_OUTPUT_MEMORY);
-    
-    // 添加 include 路径
-    tcc_add_include_path(s, "third_party/tinycc/include");
-    tcc_add_sysinclude_path(s, "/usr/include");
-    
-    // 添加系统库路径
-    tcc_add_library_path(s, "/usr/lib");
-    tcc_add_library_path(s, "/usr/local/lib");
-    
-    // 链接标准 C 库
-    tcc_add_library(s, "c");
     
     // 编译 C 代码
     if (tcc_compile_string(s, source_code) < 0) {
@@ -89,13 +76,11 @@ void httpd_cgi_c(char* method, char* script, char* protocol, size_t* out) {
     // + C 脚本的 main() 函数输出的内容（printf 等）会到 stdout
     // + stdout 已被重定向到管道，父进程会读取并处理
     // + C 脚本应遵循 CGI 规范，输出 HTTP 头（如 Content-Type）+ 空行 + 内容
+    // + fork 的子进程有独立的 TCCState 副本，tcc_run() 的状态修改不影响其他子进程
     char *argv[] = { script, NULL };
     int exit_code = tcc_run(s, 1, argv);
     
-    // 清理
-    tcc_delete(s);
-    
-    // 退出子进程，返回 C 脚本的退出码
+    // 子进程退出（系统自动回收资源，无需手动清理 TCCState）
     exit(exit_code);
 }
 

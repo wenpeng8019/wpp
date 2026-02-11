@@ -5,9 +5,15 @@
 #include <signal.h>
 #include <unistd.h>
 #include <errno.h>
+#include <libtcc.h>
 #include <wpp/wpp.h>
 #include <common.h>
 #include "httpd.h"
+#include "buildins.h"
+#include "tcc_evn.h"
+
+// 预配置的 TCCState（fork 后子进程继承）
+TCCState *cgi_tcc_state = NULL;
 
 #define PID_FILE ".pid"
 #define URL_PATH "/hello.html"
@@ -151,6 +157,32 @@ int main(int argc, char *argv[]) {
     g_main_pid = getpid();
     atexit(clean_pid);
     
+    // 初始化 buildins（由 main 触发）
+    if (buildins_init() < 0) {
+        fprintf(stderr, "❌ buildins 初始化失败\n");
+        return 1;
+    }
+
+    // 初始化 TCC 环境（预加载 buildins，便于 fork 子进程复用）
+    if (tcc_evn_init() < 0) {
+        fprintf(stderr, "❌ TCC EVN 初始化失败\n");
+        return 1;
+    }
+
+    // 预创建并配置 TCCState（fork 后子进程继承，避免重复初始化）
+    cgi_tcc_state = tcc_new();
+    if (!cgi_tcc_state) {
+        fprintf(stderr, "❌ 无法创建 TCC State\n");
+        return 1;
+    }
+    tcc_set_output_type(cgi_tcc_state, TCC_OUTPUT_MEMORY);
+    if (tcc_configure(cgi_tcc_state) < 0) {
+        fprintf(stderr, "❌ TCC 环境绑定失败\n");
+        tcc_delete(cgi_tcc_state);
+        return 1;
+    }
+    printf("✓ TCC CGI 环境已预配置（fork 后子进程继承）\n");
+
     // 初始化共享内存数据库（用于 SQTP 测试）
     init_shared_memory_db();
     
