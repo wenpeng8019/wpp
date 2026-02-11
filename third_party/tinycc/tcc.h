@@ -855,11 +855,11 @@ struct TCCState {
     int nb_library_paths;
 
     /* [WPP PATCH]:
-     * 虚拟文件表：拦截 include/库加载，优先从虚拟文件命中
+     * 自定义文件打开回调：用于拦截文件打开操作
+     * 回调返回 fd >= 0 表示命中，< 0 表示fallback到默认机制
      */
-    /* virtual files (in-memory) */
-    struct TCCVirtualFile **virtual_files;
-    int nb_virtual_files;
+    void *file_open_opaque;
+    int (*file_open_callback)(void *opaque, const char *filename);
 
     /* crt?.o object path */
     char **crt_paths;

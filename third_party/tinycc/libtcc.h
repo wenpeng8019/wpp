@@ -55,21 +55,22 @@ LIBTCCAPI void tcc_undefine_symbol(TCCState *s, const char *sym);
 LIBTCCAPI int tcc_add_file(TCCState *s, const char *filename);
 
 /* [WPP PATCH]:
- * 向 TCC 注册（基于数据的）虚拟文件
- * > name: 虚拟文件名，建议唯一（支持绝对路径和相对路径，查找时会同时匹配两者）
- * > data/size: 文件内容，必须保证在 TCC 使用期间有效（如字符串字面量或静态数据）
+ * 自定义文件打开回调函数类型
+ * 参数:
+ *   - opaque: 用户自定义上下文指针
+ *   - filename: 需要打开的文件名
+ * 返回值:
+ *   - >= 0: 返回可读的文件描述符 (命中, TCC 使用该 fd)
+ *   - < 0:  未命中, TCC fallback 到默认文件系统
  */
-LIBTCCAPI int tcc_add_virtual_file(TCCState *s, const char *name,
-                                   const void *data, unsigned long size);
+typedef int (*TCCFileOpenCallback)(void *opaque, const char *filename);
+
 /* [WPP PATCH]:
- * 向 TCC 注册（基于FD的）虚拟文件
- * + 保存传入的 fd，在打开时再 dup 以保证零拷贝；
- *   > 通过 take_ownership 参数控制是否由 TCC 负责关闭 fd（默认不负责）；
- *   > size 参数用于记录虚拟文件大小，函数本身不做 fd 可用性验证
+ * 设置自定义文件打开回调
+ * 当 TCC 需要打开文件时，会优先调用此回调
+ * 回调返回有效 fd (>= 0) 则使用；返回 -1 则 fallback 到 open()
  */
-LIBTCCAPI int tcc_add_virtual_file_fd(TCCState *s, const char *name,
-                                      int fd, unsigned long size,
-                                      int take_ownership);
+LIBTCCAPI void tcc_set_file_open_callback(TCCState *s, void *opaque, TCCFileOpenCallback callback);
 
 /* compile a string containing a C source. Return -1 if error. */
 LIBTCCAPI int tcc_compile_string(TCCState *s, const char *buf);

@@ -768,209 +768,8 @@ ST_FUNC void tcc_close(void)
 }
 
 /* [WPP PATCH]:
- * 虚拟文件查找入口：命中则走虚拟文件，不命中则回退到磁盘查找。
+ * 文件打开入口 - 使用回调机制替代静态虚拟文件列表
  */
-static TCCVirtualFile *tcc_find_virtual_file(TCCState *s1, const char *filename)
-{
-    int i;
-    for (i = 0; i < s1->nb_virtual_files; i++) {
-        TCCVirtualFile *vf = s1->virtual_files[i];
-        if (vf && vf->name && strcmp(vf->name, filename) == 0)
-            return vf;
-    }
-    {
-        const char *base = tcc_basename(filename);
-        for (i = 0; i < s1->nb_virtual_files; i++) {
-            TCCVirtualFile *vf = s1->virtual_files[i];
-            if (vf && vf->name && strcmp(tcc_basename(vf->name), base) == 0)
-                return vf;
-        }
-    }
-    return NULL;
-}
-
-/* [WPP PATCH]:
- * 虚拟文件支持：把 SHM/FD 对象伪装成可打开文件
- */
-#ifdef __linux__
-#include <sys/syscall.h>
-#ifndef MFD_CLOEXEC
-#define MFD_CLOEXEC 0x0001u
-#endif
-static int tcc_memfd_create(const char *name)
-{
-#ifdef SYS_memfd_create
-    return (int)syscall(SYS_memfd_create, name, MFD_CLOEXEC);
-#else
-    (void)name;
-    return -1;
-#endif
-}
-#endif
-
-static int tcc_write_all_fd(int fd, const unsigned char *data, size_t size)
-{
-    size_t written = 0;
-    while (written < size) {
-        ssize_t ret = write(fd, data + written, size - written);
-        if (ret <= 0)
-            return -1;
-        written += (size_t)ret;
-    }
-    return 0;
-}
-
-#ifndef _WIN32
-static unsigned int tcc_rand_u32(void)
-{
-    static unsigned int state;
-    if (!state) {
-        state = (unsigned int)getpid() ^ (unsigned int)(unsigned long)(void *)&state ^ 0x9e3779b9u;
-        if (!state)
-            state = 0x1234567u;
-    }
-    state ^= state << 13;
-    state ^= state >> 17;
-    state ^= state << 5;
-    return state;
-}
-
-/* [WPP PATCH]:
- * 兜底机制：当 fd 不可 seek 时，写入临时文件（保证可随机读取）并 unlink
- * + unlink 后文件仍可通过 fd 访问，且系统会在进程结束时自动删除该文件
- */
-static int tcc_open_tmpfile_fd(const unsigned char *data, size_t size)
-{
-    char path[] = "/tmp/wpp_tcc_tmpXXXXXX";
-    int fd = mkstemp(path);
-    if (fd < 0)
-        return -1;
-    unlink(path);
-    if (tcc_write_all_fd(fd, data, size) != 0) {
-        close(fd);
-        return -1;
-    }
-    if (lseek(fd, 0, SEEK_SET) < 0) {
-        close(fd);
-        return -1;
-    }
-    return fd;
-}
-#endif
-
-/* [WPP PATCH]:
- * 虚拟文件打开入口：支持两类来源
- * 1) FD-backed（vf->fd >= 0）：直接 dup + lseek，保持 0 拷贝路径
- * 2) Data-backed（vf->data）：按平台转成可随机读取的 fd
- *    - Linux: memfd_create -> shm_open 作为回退
- *    - macOS: shm_open + mmap 写入；若 fd 不可 seek，回退 tmpfile
- *    - Windows: 临时文件句柄 + _open_osfhandle
- */
-static int tcc_open_virtual_file(const TCCVirtualFile *vf)
-{
-
-    // [FD-backed] 如果虚拟文件已经有一个有效的 fd，直接使用该 fd 的副本(即 zero-copy)
-    if (vf->fd >= 0) {
-#ifdef _WIN32
-        int fd = _dup(vf->fd);
-        if (fd >= 0) _lseek(fd, 0, SEEK_SET); // 重置文件指针到开头
-#else
-        int fd = dup(vf->fd);
-        if (fd >= 0) lseek(fd, 0, SEEK_SET);
-#endif
-        return fd;
-    }
-
-    // [Data-backed] 用内存数据创建一个新的可读 fd（非零拷贝）
-
-#ifdef _WIN32
-    char tmp_path[MAX_PATH];
-    char tmp_file[MAX_PATH];
-    HANDLE h = INVALID_HANDLE_VALUE;
-    DWORD written = 0;
-    int fd = -1;
-
-    if (!GetTempPathA(sizeof(tmp_path), tmp_path))
-        return -1;
-    if (!GetTempFileNameA(tmp_path, "wpp", 0, tmp_file))
-        return -1;
-
-    h = CreateFileA(tmp_file, GENERIC_READ | GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
-                    FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, NULL);
-    if (h == INVALID_HANDLE_VALUE)
-        return -1;
-
-    if (!WriteFile(h, vf->data, (DWORD)vf->size, &written, NULL) || written != vf->size) {
-        CloseHandle(h);
-        return -1;
-    }
-    SetFilePointer(h, 0, NULL, FILE_BEGIN);
-    fd = _open_osfhandle((intptr_t)h, _O_RDONLY | _O_BINARY);
-    if (fd < 0) {
-        CloseHandle(h);
-        return -1;
-    }
-    return fd;
-#else
-    char shm_name[64];
-    int fd = -1;
-    static unsigned int counter = 0;
-    int attempt;
-
-#ifdef __linux__
-    fd = tcc_memfd_create("wpp_tcc");
-#endif
-    if (fd < 0) {
-        // 尝试创建共享内存对象
-        for (attempt = 0; attempt < 16; attempt++) {
-            unsigned int r = tcc_rand_u32();
-            snprintf(shm_name, sizeof(shm_name), "/wpp_tcc_%d_%u_%u", (int)getpid(), counter++, r);
-            fd = shm_open(shm_name, O_RDWR | O_CREAT | O_EXCL, 0600);
-            if (fd >= 0) { shm_unlink(shm_name); break; }
-            if (errno != EEXIST) break;
-        }
-        if (fd < 0) return -1;
-    }
-
-    // 设置共享内存为目标数据大小
-    if (ftruncate(fd, (off_t)vf->size) != 0) {
-        close(fd);
-        return -1;
-    }
-
-#if defined(__APPLE__) && !defined(__linux__)
-    // macOS 上 shm_open 的 fd 不支持直接用 write() 写入，需映射为本地内存后 memcpy，再 msync 刷盘
-    void *map = mmap(NULL, vf->size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    if (map == MAP_FAILED) {
-        close(fd);
-        return -1;
-    }
-    memcpy(map, vf->data, vf->size);
-    (void)msync(map, vf->size, MS_SYNC);
-    munmap(map, vf->size);
-#else
-    // 直接通过 write() 写入数据
-    if (tcc_write_all_fd(fd, vf->data, vf->size) != 0) {
-        close(fd);
-        return -1;
-    }
-#endif
-
-    // 验证支持随机访问，否则回退到临时文件方案
-    if (lseek(fd, 0, SEEK_SET) < 0) {
-        int tmpfd = tcc_open_tmpfile_fd(vf->data, vf->size);
-        if (tmpfd >= 0) {
-            close(fd);
-            return tmpfd;
-        }
-        close(fd);
-        return -1;
-    }
-
-    return fd;
-#endif
-}
-
 static int _tcc_open(TCCState *s1, const char *filename)
 {
     int fd;
@@ -978,11 +777,17 @@ static int _tcc_open(TCCState *s1, const char *filename)
         fd = 0, filename = "<stdin>";
     else {
         /* [WPP PATCH]:
-         * 前先尝试对虚拟文件进行拦截
+         * 优先调用自定义文件打开回调（如果已设置）
+         * 回调返回 fd >= 0 表示命中，使用该 fd
+         * 回调返回 < 0 表示未命中，fallback 到系统 open()
         */
-        TCCVirtualFile *vf = tcc_find_virtual_file(s1, filename);
-        if (vf) fd = tcc_open_virtual_file(vf);
-        else fd = open(filename, O_RDONLY | O_BINARY);
+        fd = -1;
+        if (s1->file_open_callback) {
+            fd = s1->file_open_callback(s1->file_open_opaque, filename);
+        }
+        if (fd < 0) {
+            fd = open(filename, O_RDONLY | O_BINARY);
+        }
     }
     if ((s1->verbose == 2 && fd >= 0) || s1->verbose == 3)
         printf("%s %*s%s\n", fd < 0 ? "nf":"->",
@@ -1138,22 +943,6 @@ LIBTCCAPI void tcc_delete(TCCState *s1)
     dynarray_reset(&s1->library_paths, &s1->nb_library_paths);
     dynarray_reset(&s1->crt_paths, &s1->nb_crt_paths);
 
-    /* [WPP PATCH]:
-     * 释放虚拟文件：根据 owns_fd 决定是否关闭 fd，并清理 name/结构体
-     */
-    for (int i = 0; i < s1->nb_virtual_files; i++) {
-        TCCVirtualFile *vf = s1->virtual_files[i];
-        if (vf) {
-            if (vf->owns_fd && vf->fd >= 0)
-                close(vf->fd);
-            tcc_free(vf->name);
-            tcc_free(vf);
-        }
-    }
-    tcc_free(s1->virtual_files);
-    s1->virtual_files = NULL;
-    s1->nb_virtual_files = 0;
-
     /* free include paths */
     dynarray_reset(&s1->include_paths, &s1->nb_include_paths);
     dynarray_reset(&s1->sysinclude_paths, &s1->nb_sysinclude_paths);
@@ -1293,68 +1082,15 @@ static int tcc_create_temp_fd_win(const unsigned char *data, size_t size)
 #endif
 
 /* [WPP PATCH]:
- * 向 TCC 注册（基于数据的）虚拟文件
- * > name: 虚拟文件名，建议唯一（支持绝对路径和相对路径，查找时会同时匹配两者）
- * > data/size: 文件内容，必须保证在 TCC 使用期间有效（如字符串字面量或静态数据）
+ * 设置自定义文件打开回调函数
+ * TCC 在需要打开文件时，会优先调用此回调
+ * 回调返回 fd >= 0 表示命中，< 0 表示 fallback 到默认 open()
  */
-LIBTCCAPI int tcc_add_virtual_file(TCCState *s, const char *name,
-                                   const void *data, unsigned long size)
+LIBTCCAPI void tcc_set_file_open_callback(TCCState *s, void *opaque,
+                                          int (*callback)(void *, const char *))
 {
-    if (!s || !name || !data || size == 0)
-        return -1;
-    TCCVirtualFile *vf = tcc_mallocz(sizeof(*vf));
-    if (!vf)
-        return -1;
-    vf->name = tcc_strdup(name);
-    if (!vf->name) {
-        tcc_free(vf);
-        return -1;
-    }
-#ifdef _WIN32
-    vf->fd = tcc_create_temp_fd_win((const unsigned char *)data, (size_t)size);
-    if (vf->fd >= 0) {
-        vf->data = NULL;
-        vf->size = (size_t)size;
-        vf->owns_fd = 1;
-    } else
-#endif
-    {
-        vf->data = (const unsigned char *)data;
-        vf->size = (size_t)size;
-        vf->fd = -1;
-        vf->owns_fd = 0;
-    }
-    dynarray_add(&s->virtual_files, &s->nb_virtual_files, vf);
-    return 0;
-}
-
-/* [WPP PATCH]:
- * 向 TCC 注册（基于FD的）虚拟文件
- * + 保存传入的 fd，在打开时再 dup 以保证零拷贝；
- *   > 通过 take_ownership 参数控制是否由 TCC 负责关闭 fd（默认不负责）；
- *   > size 参数用于记录虚拟文件大小，函数本身不做 fd 可用性验证
- */
-LIBTCCAPI int tcc_add_virtual_file_fd(TCCState *s, const char *name,
-                                      int fd, unsigned long size,
-                                      int take_ownership)
-{
-    TCCVirtualFile *vf;
-    if (!s || !name || fd < 0 || size == 0)
-        return -1;
-    vf = tcc_mallocz(sizeof(*vf));
-    if (!vf)
-        return -1;
-    vf->name = tcc_strdup(name);
-    if (!vf->name) {
-        tcc_free(vf);
-        return -1;
-    }
-    vf->data = NULL;
-    vf->size = (size_t)size;
-    vf->fd = fd;
-    vf->owns_fd = take_ownership ? 1 : 0;
-    dynarray_add(&s->virtual_files, &s->nb_virtual_files, vf);
-    return 0;
+    s->file_open_opaque = opaque;
+    s->file_open_callback = callback;
 }
 
 LIBTCCAPI void tcc_set_lib_path(TCCState *s, const char *path)
@@ -1608,17 +1344,22 @@ ST_FUNC int tcc_add_dll(TCCState *s, const char *filename, int flags)
 ST_FUNC int tcc_add_support(TCCState *s1, const char *filename)
 {
     char buf[100];
+    int fd;
     if (CONFIG_TCC_CROSSPREFIX[0])
         filename = strcat(strcpy(buf, CONFIG_TCC_CROSSPREFIX), filename);
+    
     /* [WPP PATCH]:
-    * 支持库加载优先走虚拟文件，失败才走原有库路径搜索。
-    */
-    TCCVirtualFile *vf = tcc_find_virtual_file(s1, filename);
-    if (vf) {
-        int fd = tcc_open_virtual_file(vf);
-        if (fd >= 0)
-            return tcc_add_binary(s1, AFF_TYPE_BIN | AFF_PRINT_ERROR, filename, fd);
+     * 优先调用自定义文件打开回调（如果已设置）
+     */
+    fd = -1;
+    if (s1->file_open_callback) {
+        fd = s1->file_open_callback(s1->file_open_opaque, filename);
     }
+    if (fd >= 0) {
+        return tcc_add_binary(s1, AFF_TYPE_BIN | AFF_PRINT_ERROR, filename, fd);
+    }
+    
+    /* fallback 到原有库路径搜索 */
     return tcc_add_dll(s1, filename, AFF_PRINT_ERROR);
 }
 
