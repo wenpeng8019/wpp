@@ -1,76 +1,137 @@
-# TinyCC 虚拟文件（WPP Patch）
+# TinyCC 文件打开回调（WPP Patch）
 
-本项目对 TinyCC 做了小幅补丁，使二进制输入（例如 libtcc1.a、runmain.o）
-可以直接从内存提供，而不必先落盘。
+本项目对 TinyCC 做了轻量级补丁，添加文件打开回调机制，允许外部拦截文件打开操作。
 
 ## 背景与动机
 
-TinyCC 的公开接口只接受文件名（`tcc_add_file()` 以及内部 `tcc_add_support()`），
-无法直接使用内嵌在可执行文件中的运行时对象。WPP 为了保持运行时常驻内存，
-引入“虚拟文件”机制，让 TinyCC 以“可打开的 fd”形式读取内存数据。
+TinyCC 原本的文件访问完全依赖 `open()` 系统调用，无法：
+- 从内存中提供文件内容（如压缩的 libtcc1.a）
+- 从虚拟文件系统读取头文件
+- 实现自定义文件查找逻辑
 
-## 新增 API
+WPP 需要将 TCC 运行时库（libtcc1.a、runmain.o）和标准头文件嵌入可执行文件，通过虚拟文件系统提供，因此添加了此回调机制。
+
+## 补丁内容
+
+### 1. 新增 API（libtcc.h）
 
 ```c
-int tcc_add_virtual_file(TCCState *s, const char *name,
-                         const void *data, unsigned long size);
+typedef int (*TCCFileOpenCallback)(void *opaque, const char *filename);
 
-int tcc_add_virtual_file_fd(TCCState *s, const char *name,
-                            int fd, unsigned long size,
-                            int take_ownership);
+LIBTCCAPI void tcc_set_file_open_callback(TCCState *s, void *opaque, 
+                                          TCCFileOpenCallback callback);
 ```
 
-### tcc_add_virtual_file
+### 2. TCCState 新增字段（tcc.h）
 
-- 基于数据（data/size）注册虚拟文件。
-- `name` 建议唯一；查找时会同时按完整路径和 basename 匹配。
-- `data` 必须在 TCC 使用期间保持有效（例如静态区或持久缓冲）。
+```c
+struct TCCState {
+    // ...
+    void *file_open_opaque;
+    int (*file_open_callback)(void *opaque, const char *filename);
+    // ...
+};
+```
 
-### tcc_add_virtual_file_fd
+### 3. 拦截点（libtcc.c）
 
-- 基于 fd 注册虚拟文件（FD-backed）。
-- 打开时才 `dup()`，尽量保持 0 拷贝读取路径。
-- `take_ownership` 决定 TCC 是否负责 `close(fd)`。
-- `size` 仅用于记录大小，函数本身不校验 fd 的可用性。
+#### 拦截点 1：`_tcc_open()` - 通用文件打开
+- 覆盖范围：`#include` 预处理指令、`tcc_add_file()` 调用
+- 位置：third_party/tinycc/libtcc.c:785-787
 
-## 工作机制
+```c
+fd = -1;
+if (s1->file_open_callback) {
+    fd = s1->file_open_callback(s1->file_open_opaque, filename);
+}
+if (fd < 0) {
+    fd = open(filename, O_RDONLY | O_BINARY);  // fallback
+}
+```
 
-1) `_tcc_open()` 在打开文件时先尝试命中虚拟文件。
-2) 命中则走 `tcc_open_virtual_file()`，获取可读 fd。
-3) 命不中才回退到磁盘 `open()`。
+#### 拦截点 2：`tcc_add_support()` - TCC 运行时库
+- 覆盖范围：libtcc1.a、runmain.o、bcheck.o 等
+- 位置：third_party/tinycc/libtcc.c:1355-1361
 
-对于二进制支持库（`tcc_add_support()`），也优先走虚拟文件。
+```c
+fd = -1;
+if (s1->file_open_callback) {
+    fd = s1->file_open_callback(s1->file_open_opaque, filename);
+}
+if (fd >= 0) {
+    return tcc_add_binary(s1, AFF_TYPE_BIN | AFF_PRINT_ERROR, filename, fd);
+}
+// fallback 到原有库路径搜索
+return tcc_add_dll(s1, filename, AFF_PRINT_ERROR);
+```
 
-## 平台细节（tcc_open_virtual_file）
+## 回调协议
 
-### FD-backed（vf->fd >= 0）
+**函数签名**：
+```c
+int callback(void *opaque, const char *filename);
+```
 
-- 直接 `dup()` 并 `lseek` 回到开头，属于 0 拷贝路径。
+**返回值**：
+- `>= 0`：已打开的文件描述符（fd），TCC 将使用此 fd 读取文件并负责关闭
+- `< 0`：未处理此文件，TCC fallback 到系统 `open()`
 
-### Data-backed（vf->data）
-
-- **Linux**：优先 `memfd_create()`，失败后回退 `shm_open()`。
-- **macOS**：`shm_open()` + `mmap` + `memcpy` 写入。
-- **Windows**：临时文件句柄 + `_open_osfhandle()`。
-- 对所有平台：若 `lseek` 不可用，回退到临时文件方案（写入后 `unlink`，
-  仅保留 fd 访问）。
+**注意事项**：
+- 回调必须返回可读的 fd（`O_RDONLY`）
+- fd 必须定位到文件开头（`lseek(fd, 0, SEEK_SET)`）
+- TCC 会在读取完成后自动 `close(fd)`
 
 ## WPP 集成示例
 
-WPP 将 TinyCC 的库搜索路径设为虚拟根：
+### 1. 设置回调（src/tcc_evn.c）
 
-- `tcc_set_lib_path(s, "/__wpp_tcc")`
-- `tcc_add_library_path(s, "/__wpp_tcc")`
+```c
+static int tcc_file_open_callback(void *opaque, const char *filename) {
+    buildin_file_info_st *node = buildins_find(filename);
+    if (!node) {
+        return -1;  // 未命中，TCC 走正常文件系统
+    }
+    
+    vfile_st *vf = buildins_acquire_vfile(node);
+    int fd = dup(vf->fd);  // 复制 fd，TCC 会关闭它
+    lseek(fd, 0, SEEK_SET);
+    return fd;
+}
 
-随后注册运行时对象：
+tcc_set_file_open_callback(s, NULL, tcc_file_open_callback);
+```
 
-- `/__wpp_tcc/libtcc1.a`
-- `/__wpp_tcc/runmain.o`
+### 2. 配置虚拟路径
+
+```c
+tcc_set_lib_path(s, "/lib");                  // buildins 虚拟路径
+tcc_add_sysinclude_path(s, "/include");       // buildins 头文件
+```
+
+### 3. 加载虚拟文件
+
+```c
+tcc_add_file(s, "/lib/libtcc1.a");  // 回调拦截，返回虚拟文件 fd
+tcc_add_file(s, "/lib/runmain.o");  // 回调拦截，返回虚拟文件 fd
+```
 
 ## 代码位置
 
-- API 声明：third_party/tinycc/libtcc.h
-- 虚拟文件结构：third_party/tinycc/tcc.h
-- 打开与拦截逻辑：third_party/tinycc/libtcc.c
+- **API 声明**：[third_party/tinycc/libtcc.h](tinycc/libtcc.h)
+- **结构定义**：[third_party/tinycc/tcc.h](tinycc/tcc.h)
+- **实现代码**：[third_party/tinycc/libtcc.c](tinycc/libtcc.c)
 
-如需移除补丁，可改回“写临时文件 + 使用原始 API”的方式，并删除上述新增 API。
+## 补丁影响
+
+- ✅ **非侵入性**：仅添加回调钩子，不影响原有逻辑
+- ✅ **可选功能**：未设置回调时行为与原版 TCC 完全一致
+- ✅ **零性能损耗**：未设置回调时仅增加一次 `if (callback)` 判断
+- ✅ **向后兼容**：不修改任何现有 API 语义
+
+## 移除补丁
+
+如需移除此补丁：
+1. 删除 `tcc.h` 中的两个字段
+2. 删除 `libtcc.h` 中的 API 声明
+3. 删除 `libtcc.c` 中的三处回调调用
+4. WPP 改用临时文件方案（写入 /tmp，使用原始 API）
