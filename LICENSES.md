@@ -66,7 +66,21 @@ yyjson 是一个高性能的 JSON 解析库，采用 MIT License，允许在任�
 
 zlib 是业界标准的压缩库，使用非常宽松的 zlib License，可以自由用于商业和开源项目。
 
-### 6. althttpd - 需要确认
+### 6. uthash - BSD License
+- **许可类型**: BSD License（修改版 BSD，非常宽松）
+- **权限**: 可以在商业和开源项目中自由使用、修改、分发
+- **要求**: 
+  - 在源代码分发时保留版权声明
+  - 在二进制分发时在文档中保留版权声明
+  - 不得使用作者名字为衍生产品背书
+- **适合**: ✅ 非常宽松，可用于任何项目
+- **来源**: `/third_party/uthash/`
+- **项目地址**: https://github.com/troydhanson/uthash
+- **许可证文件**: `LICENSES/UTHASH-LICENSE`
+
+uthash 是单头文件哈希表库，提供哈希表、动态数组、链表等数据结构实现。采用宽松的 BSD License，可自由用于商业和开源项目。
+
+### 7. althttpd - 需要确认
 - **状态**: 源码获取中
 - **预期**: Public Domain（SQLite 项目系列通常是公有领域）
 - **来源**: `/third_party/althttpd/`
