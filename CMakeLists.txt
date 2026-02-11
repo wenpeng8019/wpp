@@ -22,6 +22,7 @@ option(WPP_BUILD_DOCS "Build documentation" OFF)
 
 # 包含目录
 include_directories(${CMAKE_SOURCE_DIR}/include)
+include_directories(${CMAKE_SOURCE_DIR}/third_party/uthash/include)
 
 # =============================================================================
 # SQLite 静态库
@@ -285,6 +286,41 @@ else()
 endif()
 
 # =============================================================================
+# BUILDINS 资源自动生成
+# =============================================================================
+
+# 定义生成的文件
+set(BUILDINS_SOURCES ${CMAKE_SOURCE_DIR}/src/buildins/sysroot.c)
+set(BUILDINS_HEADERS ${CMAKE_SOURCE_DIR}/src/buildins/sysroot.h)
+set(BUILDINS_SCRIPT ${CMAKE_SOURCE_DIR}/tools/make_buildins.sh)
+set(BUILDINS_DIR ${CMAKE_SOURCE_DIR}/buildins)
+
+# 添加自定义命令：生成 BUILDINS 资源
+# 当 buildins 目录下的文件变化时，自动重新生成
+file(GLOB_RECURSE BUILDINS_INPUT_FILES 
+    ${BUILDINS_DIR}/include/*.h
+    ${BUILDINS_DIR}/lib/*
+)
+
+add_custom_command(
+    OUTPUT ${BUILDINS_SOURCES} ${BUILDINS_HEADERS}
+    COMMAND bash ${BUILDINS_SCRIPT}
+    DEPENDS ${BUILDINS_INPUT_FILES} ${BUILDINS_SCRIPT}
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Generating embedded BUILDINS resources..."
+    VERBATIM
+)
+
+# 创建自定义目标（确保在编译主程序前生成）
+add_custom_target(generate_buildins
+    DEPENDS ${BUILDINS_SOURCES} ${BUILDINS_HEADERS}
+)
+
+message(STATUS "BUILDINS Resource Configuration:")
+message(STATUS "  Script: ${BUILDINS_SCRIPT}")
+message(STATUS "  Output: ${BUILDINS_SOURCES}, ${BUILDINS_HEADERS}")
+
+# =============================================================================
 # 主程序
 # =============================================================================
 
@@ -294,7 +330,14 @@ add_executable(wpp
     src/httpd.c
     src/http_sqtp.c
     src/http_cgi_c.c
+    src/buildins.c
+    src/vfile.c
+    src/tcc_evn.c
+    ${BUILDINS_SOURCES}
 )
+
+# 确保在编译前生成 BUILDINS 资源
+add_dependencies(wpp generate_buildins)
 
 # 如果找到 OpenSSL，启用 TLS 支持
 if(OPENSSL_FOUND)
