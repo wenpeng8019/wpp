@@ -12,6 +12,7 @@
 #include <stdbool.h>
 #include <sys/unistd.h>
 #include <stdio.h>
+#include "buildins.h"
 
 typedef struct http_params {
 
@@ -49,7 +50,7 @@ void MakeLogEntry(int completed, int lineno);
 void httpd_sqtp(char* method, char* script, char* protocol, size_t* out);
 
 // TinyCC CGI 处理函数
-void httpd_cgi_c(char* method, char* script, char* protocol, size_t* out);
+void httpd_cgi_c(char* method, char* script, char* protocol, size_t* out, buildin_file_info_st* buildin_info);
 
 // 预配置的 TCCState（在 main 中初始化，fork 后子进程继承）
 typedef struct TCCState TCCState;
@@ -66,6 +67,7 @@ int httpd_main(uint16_t mnPort, uint16_t mxPort,            // 监听的 TCP 端
                bool jail,                                   // 是否使用 change-root jail（沙盒）机制，默认 true
                const char *csStartPage/* nullable */,
                const char* user/* nullable */,              // 指定的用来运行 http 处理的用户身份
+               const char* root/* nullable */,              // Web 根目录
                http_params_st* pParams/* nullable */,
                http_tls_st* pTls/* nullable */,
                const char* pid_file/* nullable */);

@@ -1062,6 +1062,10 @@ static void StartResponse(const char *zResultCode) {
     zReplyStatus[3] = 0;
     if (zReplyStatus[0] >= '4') {
         closeConnection = true;
+        // 错误响应（4xx, 5xx）不应该被缓存，避免浏览器缓存错误信息
+        nOut += althttpd_printf("Cache-Control: no-cache, no-store, must-revalidate" CRLF);
+        nOut += althttpd_printf("Pragma: no-cache" CRLF);  // HTTP/1.0 兼容
+        nOut += althttpd_printf("Expires: 0" CRLF);        // HTTP/1.0 兼容
     }
     if (closeConnection) {
         nOut += althttpd_printf("Connection: close" CRLF);
@@ -2235,6 +2239,115 @@ static void xferBytes(FILE *in, FILE *out, ssize_t nXfer, ssize_t nSkip) {
 }
 
 /*
+** Send a file from buildins (virtual file system) as the reply.
+** Supports direct gzip delivery if client accepts gzip encoding.
+**
+** Return 1 to omit making a log entry for the reply.
+*/
+static int SendBuildins(
+        const char *csFile,           /* Virtual file path (for logging/MIME) */
+        int iLenFile,                 /* Length of the csFile name in bytes */
+        buildin_file_info_st *info    /* buildins file info */
+) {
+    const char *csContentType;
+    time_t t = time(NULL);  // 使用当前时间（buildins 没有修改时间）
+    char zETag[100];
+    const MimeTypeDef *pMimeType;
+    int bAddCharset = 1;
+    const char *zEncoding = 0;
+    size_t content_length = 0;
+    const uint8_t *content_data = NULL;
+    void *decompressed_data = NULL;
+
+    // 获取 MIME 类型
+    pMimeType = GetMimeType(csFile, iLenFile);
+    csContentType = pMimeType
+                   ? pMimeType->zMimetype : "application/octet-stream";
+    if (pMimeType && (MTF_NOCHARSET & pMimeType->flags)) {
+        bAddCharset = 0;
+    }
+
+    // 生成 ETag（基于文件路径哈希和原始大小）
+    sprintf(zETag, "b%xz%x", info->id, info->orig_sz);
+
+    // 检查 ETag 缓存
+    if (CompareEtags(zIfNoneMatch, zETag) == 0
+        || (zIfModifiedSince != 0
+            && (t = ParseRfc822Date(zIfModifiedSince)) > 0
+            && t >= time(NULL))  // buildins 文件视为从不修改
+    ) {
+        StartResponse("304 Not Modified");
+        nOut += DateTag("Last-Modified", time(NULL));
+        nOut += althttpd_printf("Cache-Control: max-age=%d" CRLF, g_mxAge);
+        nOut += althttpd_printf("ETag: \"%s\"" CRLF CRLF, zETag);
+        fflush(stdout);
+        MakeLogEntry(0, 470);  /* LOG: ETag Cache Hit */
+        return 1;
+    }
+
+    // 决定是否发送压缩数据
+    if (rangeEnd <= 0 && zAcceptEncoding && strstr(zAcceptEncoding, "gzip") != 0) {
+        // 客户端支持 gzip，直接发送压缩数据
+        zEncoding = "gzip";
+        content_data = info->comp;
+        content_length = info->comp_sz;
+    } else {
+        // 客户端不支持 gzip 或请求了 Range，需要解压
+        decompressed_data = buildins_decompressed(info);
+        if (!decompressed_data) {
+            NotFound(481); /* LOG: buildins decompression failed */
+        }
+        content_data = (const uint8_t *)decompressed_data;
+        content_length = info->orig_sz;
+    }
+
+    // 处理 Range请求
+    if (rangeEnd > 0 && rangeStart < content_length) {
+        StartResponse("206 Partial Content");
+        if (rangeEnd >= content_length) {
+            rangeEnd = content_length - 1;
+        }
+        nOut += althttpd_printf("Content-Range: bytes %lld-%lld/%zu" CRLF,
+                                (long long) rangeStart, (long long) rangeEnd,
+                                content_length);
+        content_length = rangeEnd + 1 - rangeStart;
+        content_data += rangeStart;
+    } else {
+        StartResponse("200 OK");
+        rangeStart = 0;
+    }
+
+    // 发送 HTTP 头部
+    nOut += DateTag("Last-Modified", time(NULL));
+    if (g_enableSAB) {
+        nOut += althttpd_printf("Cross-Origin-Opener-Policy: same-origin" CRLF);
+        nOut += althttpd_printf("Cross-Origin-Embedder-Policy: require-corp" CRLF);
+    }
+    nOut += althttpd_printf("Cache-Control: max-age=%d" CRLF, g_mxAge);
+    nOut += althttpd_printf("ETag: \"%s\"" CRLF, zETag);
+    nOut += althttpd_printf("Content-type: %s%s" CRLF, csContentType,
+                            bAddCharset ? "; charset=utf-8" : "");
+    if (zEncoding) {
+        nOut += althttpd_printf("Content-encoding: %s" CRLF, zEncoding);
+    }
+    nOut += althttpd_printf("Content-length: %zu" CRLF CRLF, content_length);
+    fflush(stdout);
+
+    // HEAD 请求只发送头部
+    if (strcmp(zMethod, "HEAD") == 0) {
+        MakeLogEntry(0, 2); /* LOG: Normal HEAD reply */
+        fflush(stdout);
+        return 1;
+    }
+
+    // 发送数据
+    althttpd_fwrite(content_data, 1, content_length, stdout);
+    nOut += content_length;
+
+    return 0;
+}
+
+/*
 ** Send the text of the file named by csFile as the reply.  Use the
 ** suffix on the end of the csFile name to determine the mimetype.
 **
@@ -2842,6 +2955,7 @@ void ProcessOneRequest(int forceClose, int socketId) {
     zMethod = StrDup(GetFirstElement(zLine, &z));           // HTTP 方法：GET、POST、HEAD
     zRealScript = zScript = StrDup(GetFirstElement(z, &z)); // 请求的 URI 路径
     zProtocol = StrDup(GetFirstElement(z, &z));             // 协议版本：HTTP/1.0 或 HTTP/1.1
+    fprintf(stderr, "[httpd] HTTP Request: %s %s %s\n", zMethod, zScript, zProtocol);
 
     // 如果请求协议无效，返回 400 Bad Request 错误
     // > 必须以 "HTTP/" 开头
@@ -3262,14 +3376,29 @@ void ProcessOneRequest(int forceClose, int socketId) {
         zLine[j] = 0;
         /* fprintf(stderr, "searching [%s]...\n", zLine); */
 
-        // 如果路径（目录/文件）不存在，尝试寻找 "not-found.html" 错误页
-        if (stat(zLine, &statbuf) != 0) {
+        // 检查路径是否存在（优先 buildins 内存查找，性能更好）
+        buildin_file_info_st *buildin = buildins_find(&zLine[j0]);
+        
+        // 如果 buildin 不存在，检查文件系统
+        if (!buildin && stat(zLine, &statbuf) != 0) {
+            // 路径既不在 buildins 也不在文件系统，尝试寻找 "not-found.html" 错误页
 
             int stillSearching = 1;
             while (stillSearching && i > 0 && j > j0) {
 
                 while (j > j0 && zLine[j - 1] != '/') { j--; }  // 回溯到上一级目录
                 strcpy(&zLine[j - 1], "/not-found.html");       // 尝试不同层级的 not-found.html
+                
+                // 优先检查 buildins
+                buildin = buildins_find(&zLine[j0]);
+                if (buildin && !buildins_is_dir(buildin)) {
+                    zRealScript = StrDup(&zLine[j0]);
+                    // buildins 文件不需要 access() 检查，直接重定向
+                    Redirect(zRealScript, 302, 1, 370/* 日志：重定向到 not-found */);
+                    return;
+                }
+                
+                // buildins 中没有，检查文件系统
                 if (stat(zLine, &statbuf) == 0
                     && S_ISREG(statbuf.st_mode)
                     && access(zLine, R_OK) == 0) {
@@ -3290,10 +3419,12 @@ void ProcessOneRequest(int forceClose, int socketId) {
             break;
         }
 
-        // 如果找到的是普通文件（非目录）
-        if (S_ISREG(statbuf.st_mode)) {
+        // 如果找到的是文件（buildin 文件或文件系统文件）
+        if ((buildin && !buildins_is_dir(buildin)) || 
+            (!buildin && S_ISREG(statbuf.st_mode))) {
 
-            if (access(zLine, R_OK)) NotFound(390/* 日志：文件不可读 */);
+            // 文件系统文件需要检查可读性
+            if (!buildin && access(zLine, R_OK)) NotFound(390/* 日志：文件不可读 */);
 
             // 找到并保存实际文件路径
             zRealScript = StrDup(&zLine[j0]);
@@ -3313,11 +3444,23 @@ void ProcessOneRequest(int forceClose, int socketId) {
                      k = j > 0 && zLine[j - 1] == '/' ? j - 1 : j;
             for (jj = 0; jj < n; jj++) {
                 strcpy(&zLine[k], azIndex[jj]);
-                if (stat(zLine, &statbuf) != 0) continue;   // 文件不存在
-                if (!S_ISREG(statbuf.st_mode)) continue;    // 不是普通文件
-                if (access(zLine, R_OK)) continue;          // 不可读
-                break;  // 找到了可用的索引文件
+                
+                // 优先检查 buildins（内存查找，性能更好）
+                buildin = buildins_find(&zLine[j0]);
+                if (buildin && !buildins_is_dir(buildin)) {
+                    // 在 buildins 中找到了文件（不是目录）
+                    fprintf(stderr, "[httpd] Index file '%s' found in buildins\n", &zLine[j0]);
+                    break;
+                }
+                
+                // buildins 中没有，检查文件系统
+                if (stat(zLine, &statbuf) == 0) {
+                    if (!S_ISREG(statbuf.st_mode)) continue;    // 不是普通文件
+                    if (access(zLine, R_OK)) continue;          // 不可读
+                    break;  // 找到了文件系统中的索引文件
+                }
             }
+            
             if (jj >= n) NotFound(400/* 日志：URI 是目录但没有 index.html */);
 
             // 保存（带有索引文件的）实际文件路径
@@ -3358,8 +3501,46 @@ void ProcessOneRequest(int forceClose, int socketId) {
     // 根据文件类型采取相应行动
     // ---------------------------
 
+    // 检查是否是 buildins 文件（只查找一次，后续复用）
+    buildin_file_info_st *buildin_file = buildins_find(zRealScript);
+    bool is_buildin_c_cgi = false;  // 标记是否为 buildin C 脚本
+    char *temp_cgi_path = NULL;
+    
+    if (buildin_file && !buildins_is_dir(buildin_file)) {
+        // buildins 文件：检查是否是 CGI（基于扩展名判断）
+        if (lenFile > 2 && strcmp(&zFile[lenFile - 2], ".c") == 0) {
+            // C 脚本：直接在 httpd_cgi_c 中处理，不需要临时文件
+            is_buildin_c_cgi = true;
+        } else if (lenFile > 4 && (
+                   strcmp(&zFile[lenFile - 4], ".cgi") == 0 ||
+                   strcmp(&zFile[lenFile - 3], ".py") == 0 ||
+                   strcmp(&zFile[lenFile - 3], ".sh") == 0)) {
+            // 其他 CGI 脚本：仍然需要提取到临时文件
+            fprintf(stderr, "[httpd] Extracting buildin CGI to temp file: %s\n", zRealScript);
+            int temp_cgi_fd = buildins_to_tmp_fd(buildin_file, &temp_cgi_path);
+            if (temp_cgi_fd < 0) {
+                Malfunction(807, "Failed to extract buildin CGI: %s", zRealScript);
+            }
+            close(temp_cgi_fd); // 关闭 fd，后续会重新打开
+            
+            // 添加执行权限
+            chmod(temp_cgi_path, 0700);
+            
+            // 更新 zFile 指向临时文件
+            free(zFile);
+            zFile = temp_cgi_path;
+            lenFile = (int)strlen(zFile);
+            
+            // 重新 stat 临时文件
+            if (stat(zFile, &statbuf) != 0) {
+                Malfunction(808, "Failed to stat temp CGI file: %s", zFile);
+            }
+        }
+    }
+
     // 对 CGI 脚本的处理和执行
     int isCScript = (lenFile > 2 && strcmp(&zFile[lenFile - 2], ".c") == 0);        // 扩展 c 脚本类型
+    
     if (isCScript || 
         ((statbuf.st_mode & 0100) == 0100 && access(zFile, X_OK) == 0
         && (!(pMimeType = GetMimeType(zFile, lenFile)) || (pMimeType->flags & MTF_NOCGI) == 0))) {
@@ -3369,7 +3550,8 @@ void ProcessOneRequest(int forceClose, int socketId) {
         // + 0022 = 组写权限(0020) + 其他用户写权限(0002)
         // + 即如果 CGI 脚本被其所有者以外的人可写，则中止执行
         // + 这对 C 脚本同样重要：恶意用户可修改 .c 文件，服务器会编译执行被篡改的代码
-        if (statbuf.st_mode & 0022)
+        // + 例外：buildins 中的文件是编译进可执行文件的，可以信任，不需要权限检查
+        if (!is_buildin_c_cgi && !buildin_file && (statbuf.st_mode & 0022))
             CgiScriptWritable();        // 返回错误并退出
 
         // 计算 CGI 脚本的基本文件名（不包含路径）
@@ -3437,7 +3619,7 @@ void ProcessOneRequest(int forceClose, int socketId) {
                 // + 优势：无需预编译，修改即生效，适合快速开发
                 // + 劣势：每次请求都要编译，性能略低于预编译 CGI
                 // + 注意：这里在子子进程中执行，crash 不会影响请求处理进程
-                httpd_cgi_c(zMethod, zFile, zProtocol, &nOut);
+                httpd_cgi_c(zMethod, zFile, zProtocol, &nOut, is_buildin_c_cgi ? buildin_file : NULL);
                 exit(0);  // C 脚本执行完毕，退出 CGI 子子进程
             } else {
                 // 传统 CGI：execl() 替换进程映像执行二进制文件
@@ -3508,12 +3690,42 @@ void ProcessOneRequest(int forceClose, int socketId) {
         // 设置超时：30秒基础 + 每 2KB 数据 1 秒
         SetTimeout(30 + (int)statbuf.st_size / 2000, 805/* 日志：发送静态文件超时 */);
 
-        if (SendFile(zFile, lenFile, &statbuf)) return;
+        // 检查是否是 buildins 文件（复用前面的查找结果，到这里不可能是目录）
+        if (buildin_file) {
+            // 从 buildins 发送（支持 gzip 直传）
+            fprintf(stderr, "[httpd] Sending file from buildins: %s\n", zRealScript);
+            if (SendBuildins(zRealScript, strlen(zRealScript), buildin_file)) {
+                // 清理临时 CGI 文件（如果存在）
+                if (temp_cgi_path) {
+                    unlink(temp_cgi_path);
+                    free(temp_cgi_path);
+                }
+                return;
+            }
+            // SendBuildins 失败，继续尝试文件系统（不太可能发生）
+        }
+
+        // 从文件系统发送
+        fprintf(stderr, "[httpd] Sending file from filesystem: %s\n", zFile);
+        if (SendFile(zFile, lenFile, &statbuf)) {
+            // 清理 buildins 临时CGI 文件
+            if (temp_cgi_path) {
+                unlink(temp_cgi_path);
+                free(temp_cgi_path);
+            }
+            return;
+        }
     }
 
     althttpd_fflush(stdout);
     MakeLogEntry(0, 0);  /* LOG: Normal reply */
     omitLog = 1;
+    
+    // 清理 buildins 临时 CGI 文件
+    if (temp_cgi_path) {
+        unlink(temp_cgi_path);
+        free(temp_cgi_path);
+    }
 }
 
 // 启动浏览器，打开指定 zPage, 即 URL http://localhost:iPort/zPath
@@ -3797,6 +4009,7 @@ int httpd_main(uint16_t mnPort, uint16_t mxPort,
                bool jail,
                const char *csStartPage,
                const char* user,
+               const char* root,
                http_params_st* pParams, http_tls_st* pTls,
                const char* pid_file) {
 
@@ -3824,7 +4037,7 @@ int httpd_main(uint16_t mnPort, uint16_t mxPort,
     }
 
     if (pParams) {
-        g_zRoot = pParams->csRoot;
+        g_zRoot = root;
         g_zLogFile = pParams->csLogFile;
         g_zIPShunDir = pParams->csIPShunDir;
         g_zHttpHost = (char*)pParams->csDefaultHost;
