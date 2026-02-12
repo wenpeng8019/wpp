@@ -18,33 +18,71 @@
 
 ## ✨ 核心特性
 
-### 🗄️ **SQTP 协议 - 结构化数据库查询**
+### 🗄️ **SQTP 协议 - 结构化查询传输协议**
 通过自定义 HTTP 方法和头部直接查询 SQLite 数据库：
 
+**URI 路径说明:**
+- **`/`** - 内存数据库，可直接使用但数据不保存 (适合临时操作)
+- **`/.db`** - 默认文件数据库，首次访问时自动创建 (持久化存储)
+- **`/db/filename`** - 自定义指定的其他文件数据库路径，需要由 C CGI 主动创建。否则会返回 404 错误
+
 ```bash
-# SELECT 查询
-curl -X SQTP-SELECT localhost:8080/db/main \
+# 内存数据库查询 (临时数据，重启丢失)
+curl -X SQTP-SELECT localhost:8080/ \
   -H "FROM: users" \
   -H "WHERE: status='active'"
 
-# 数据操作
-curl -X SQTP-INSERT localhost:8080/db/main \
+# 默认文件数据库插入 (自动创建 .db 文件，持久化存储)
+curl -X SQTP-INSERT localhost:8080/.db \
   -H "TABLE: users" \
   -H "COLUMNS: name, age" \
   -H "Content-Type: application/json" \
   -d '["Alice", 25]'
 
+# 指定文件数据库查询 (自定义数据库文件)
+curl -X SQTP-SELECT localhost:8080/db/main \
+  -H "FROM: users" \
+  -H "X-SQTP-View: object"
+
 # JSON 响应，直接用于 JavaScript fetch()
 ```
 
-**JavaScript 客户端:**
-```javascript
-// 使用内置的 SQTP 客户端库
-const users = await sqtp.select({
-  from: 'users',
-  where: 'age > 18'
-});
-users.forEach(user => console.log(user.name, user.age));
+**JavaScript 客户端 (3 种使用方式):**
+
+```html
+<!-- 1. Promise/Async-Await 方式 (推荐) -->
+<script src="lib/sqtp/sqtp.xhr.promise.js"></script>
+<script>
+  const db = new SQTP();
+  // 现代 async/await 语法
+  const users = await db.select('users')
+    .where('age > 18')
+    .execute();
+  users.forEach(user => console.log(user.name, user.age));
+</script>
+
+<!-- 2. 传统回调方式 (兼容性最佳) -->
+<script src="lib/sqtp/sqtp.xhr.callback.js"></script>
+<script>
+  const db = new SQTP();
+  // Error-First Callback 模式
+  db.select('users').where('age > 18').execute(function(err, users) {
+    if (err) return console.error(err);
+    users.forEach(user => console.log(user.name, user.age));
+  });
+</script>
+
+<!-- 3. Fetch API 方式 (现代浏览器) -->
+<script src="lib/sqtp/sqtp.fetch.js"></script>
+<script>
+  const db = new SQTP();
+  // 基于 Fetch API
+  db.select('users')
+    .where('age > 18')
+    .execute()
+    .then(users => users.forEach(user => console.log(user.name, user.age)))
+    .catch(err => console.error(err));
+</script>
 ```
 
 ### 🔥 **C 脚本 CGI - 运行时编译**
@@ -75,7 +113,7 @@ int main() {
 内置的 sysroot 概念虚拟文件系统，提供零依赖启动：
 
 - **🔧 C 头文件**: `<stdio.h>`, `<stdlib.h>`, `<sqlite3.h>` 等完整标准库
-- **📚 客户端库**: SQTP JavaScript 客户端，开箱即用
+- **📚 客户端库**: 3 种 SQTP JavaScript 客户端库，满足不同需求 (Promise/Callback/Fetch)
 - **🎛️ 管理界面**: 内置的数据库管理和项目介绍页面
 - **⚡ 性能优化**: gzip 压缩、ETag 缓存、自适应哈希查找
 
@@ -111,15 +149,15 @@ cmake -B build && cmake --build build  # CMake 构建
 
 **测试 SQTP 数据库查询:**
 ```bash
-# 插入测试数据
-curl -X SQTP-INSERT localhost:8080/db/main \
+# 插入测试数据到默认文件数据库 (自动创建 .db 文件)
+curl -X SQTP-INSERT localhost:8080/.db \
   -H "TABLE: users" \
   -H "COLUMNS: name, age" \
   -H "Content-Type: application/json" \
   -d '["Alice", 25]'
 
-# 查询数据 (返回 JSON)
-curl -X SQTP-SELECT localhost:8080/db/main \
+# 查询数据 (返回 JSON，数据已持久化保存)
+curl -X SQTP-SELECT localhost:8080/.db \
   -H "FROM: users" \
   -H "X-SQTP-View: object"
 ```
@@ -157,14 +195,14 @@ int main() {
 
 ```html
 <!-- index.html -->
-<script src="lib/sqtp/sqtp.fetch.js"></script>
+<script src="lib/sqtp/sqtp.xhr.promise.js"></script>
 <script>
 // 前端实时数据库查询
 const loadUsers = async () => {
-    const users = await sqtp.select({
-        from: 'users',
-        where: 'age > 18'
-    });
+    const db = new SQTP();
+    const users = await db.select('users')
+        .where('age > 18')
+        .execute();
     document.getElementById('users').innerHTML = 
         users.map(u => `<p>${u.name}: ${u.age}</p>`).join('');
 };
@@ -446,7 +484,7 @@ WPP 站在巨人的肩膀上，感谢以下开源项目：
 - [x] TinyCC C 脚本 CGI
 - [x] SQLite 集成 (共享内存数据库)
 - [x] Buildins 虚拟文件系统  
-- [x] JavaScript 客户端库
+- [x] JavaScript 客户端库 (Promise/Callback/Fetch 三种方式)
 - [x] 进程隔离和安全模型
 - [x] 双构建系统 (Make/CMake)
 - [x] 完整的项目文档
