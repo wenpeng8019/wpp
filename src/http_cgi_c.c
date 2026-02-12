@@ -15,6 +15,7 @@
 #include <unistd.h>
 #include <libtcc.h>
 #include "tcc_evn.h"
+#include "buildins.h"
 
 // 前向声明
 static void cgi_c_error_func(void *opaque, const char *msg);
@@ -25,27 +26,57 @@ extern TCCState *cgi_tcc_state;
 
 // TinyCC CGI 主处理函数
 // 注意：此函数在 CGI 子子进程中运行，stdout 已重定向到管道
-void httpd_cgi_c(char* method, char* script, char* protocol, size_t* out) {
+void httpd_cgi_c(char* method, char* script, char* protocol, size_t* out, buildin_file_info_st* buildin_info) {
     (void)method;    // 未使用的参数
     (void)protocol;  // 未使用的参数
     (void)out;       // 在子进程中无意义，输出通过管道
     
-    // 读取 C 脚本文件
     char* source_code = NULL;
     size_t code_size = 0;
+    int need_free_source = 0;
     
-    if (cgi_c_read_file(script, &source_code, &code_size) != 0) {
-        // CGI 错误输出：使用标准 CGI 头格式
-        printf("Status: 404 Not Found\r\n");
-        printf("Content-Type: text/plain\r\n\r\n");
-        printf("Error: C script file not found: %s\n", script);
-        exit(1);  // 非零退出码表示错误
+    // 根据是否为 buildin 文件选择不同的源代码获取方式
+    if (buildin_info) {
+        // 从 buildins 解压获取源代码
+        source_code = (char*)buildins_decompressed(buildin_info);
+        if (!source_code) {
+            printf("Status: 500 Internal Server Error\r\n");
+            printf("Content-Type: text/plain\r\n\r\n");
+            printf("Error: Failed to decompress buildin C script: %s\n", script);
+            exit(1);
+        }
+        
+        // 特殊处理空文件（buildins_decompressed 返回 (void*)1）
+        if (source_code == (void*)1) {
+            printf("Status: 500 Internal Server Error\r\n");
+            printf("Content-Type: text/plain\r\n\r\n");
+            printf("Error: C script file is empty: %s\n", script);
+            exit(1);
+        }
+        
+        code_size = buildin_info->orig_sz;
+        // 注意：buildins 解压的内存由 buildins 模块管理，不需要 free
+        need_free_source = 0;
+    } else {
+        // 从文件系统读取 C 脚本文件
+        if (cgi_c_read_file(script, &source_code, &code_size) != 0) {
+            printf("Status: 404 Not Found\r\n");
+            printf("Content-Type: text/plain\r\n\r\n");
+            printf("Error: C script file not found: %s\n", script);
+            exit(1);
+        }
+        need_free_source = 1;
     }
     
     // 使用预配置的 TCCState（由 fork 继承，无需重新创建）
+    // 设计说明：
+    // + 主进程预先配置 cgi_tcc_state（路径、符号、预编译头文件等）
+    // + fork 后子进程继承这个 State 的完整副本（写时复制）
+    // + 每个子进程使用自己的副本，互不干扰，无状态污染风险
+    // + 避免每次请求都重新初始化，提升性能
     TCCState *s = cgi_tcc_state;
     if (!s) {
-        free(source_code);
+        if (need_free_source) free(source_code);
         printf("Status: 500 Internal Server Error\r\n");
         printf("Content-Type: text/plain\r\n\r\n");
         printf("Error: TCC state not initialized\n");
@@ -57,7 +88,8 @@ void httpd_cgi_c(char* method, char* script, char* protocol, size_t* out) {
     
     // 编译 C 代码
     if (tcc_compile_string(s, source_code) < 0) {
-        free(source_code);
+        if (need_free_source) free(source_code);
+        // 注意：在子进程中 tcc_delete 不影响父进程（fork 后内存独立）
         tcc_delete(s);
         printf("Status: 500 Internal Server Error\r\n");
         printf("Content-Type: text/plain\r\n\r\n");
@@ -65,7 +97,7 @@ void httpd_cgi_c(char* method, char* script, char* protocol, size_t* out) {
         exit(1);
     }
     
-    free(source_code);
+    if (need_free_source) free(source_code);
     
     // 刷新输出缓冲区
     fflush(stdout);
