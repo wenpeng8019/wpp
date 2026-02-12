@@ -7,17 +7,63 @@
 #ifndef BUILDINS_H
 #define BUILDINS_H
 
+/* ===== 哈希表配置参数 ===== */
+#define HASH_INDEX_THRESHOLD        50    /* 资源数量达到该值时启用哈希表查找 */
+#define HASH_MAX_DEPTH_THRESHOLD    3     /* 单个哈希桶最大深度阈值 */
+#define HASH_MIN_LOAD_FACTOR        0.3   /* 哈希表最小负载因子 */
+#define HASH_MAX_ITERATIONS         5     /* 自适应调整最大迭代次数 */
+
+#include <stddef.h>
+#include <stdint.h>
 #include <stdbool.h>
+#include <float.h>
+#include <string.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <assert.h>
-#include "buildins/sysroot.h"
 #include "vfile.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+///////////////////////////////////////////////////////////////////////////////
+
+/**
+ * 内建目录信息结构
+ * 
+ * 注意：前4个字段与 buildin_file_info_st 对齐以支持类型转换
+ * flag 字段固定为 (void*)-1 用于区分目录和文件
+ */
+typedef struct buildin_dir_info {
+    struct buildin_file_info*       next;       /* 下一个节点（文件或目录） */
+    uint32_t                        id;         /* 目录 ID（URI 哈希值） */
+    const char*                     uri;        /* 资源 URI 路径 */
+    struct buildin_dir_info*        parent;     /* 父目录（根目录为 NULL） */
+    const uint8_t*                  flag;       /* 目录标识：固定为 (void*)-1 */
+} buildin_dir_info_st;
+
+/**
+ * 内建文件信息结构（链表节点）
+ * 
+ * 注意：前4个字段与 buildin_dir_info_st 对齐以支持类型转换
+ */
+typedef struct buildin_file_info {
+    struct buildin_file_info*       next;       /* 下一个节点（文件或目录） */
+    uint32_t                        id;         /* 文件 ID（URI 哈希值） */
+    const char*                     uri;        /* 资源 URI 路径 */
+    buildin_dir_info_st*            dir;        /* 文件所属目录 */
+    const uint8_t*                  comp;       /* 压缩数据指针 */
+    void*                           raw;        /* 解压后数据（NULL=未解压，懒加载） */
+    void*                           vfile;      /* TCC 虚拟文件对象（NULL=未创建） */
+    uint32_t                        comp_sz;    /* 压缩后大小 */
+    uint32_t                        orig_sz;    /* 解压后大小 */
+    uint32_t                        vref;       /* 虚拟文件引用计数 */
+} buildin_file_info_st;
+
+/**
+ * 目录标识：当 buildin_file_info_st.comp 等于此值时，表示该条目是目录而非文件
+ */
+#define BUILDINS_DIR_FLAG ((const uint8_t*)(uintptr_t)-1)
+
+///////////////////////////////////////////////////////////////////////////////
 
 /**
  * 初始化所有内建资源
@@ -50,13 +96,24 @@ void buildins_cleanup(void);
 buildin_file_info_st* buildins_find(const char *uri);
 
 /**
+ * 判断 buildins 条目是否为目录
+ * @param info buildins 条目
+ * @return 1=目录, 0=文件
+ */
+int buildins_is_dir(const buildin_file_info_st *info);
+
+/**
  * 获取解压后的资源数据
  * 
  * 如果资源尚未解压（raw == NULL），则分配内存并解压。
  * 解压后的数据缓存在 raw 字段中，后续调用直接返回。
  * 
+ * 特殊情况：
+ * - 空文件（orig_sz=0）：返回 (void*)1 作为标记，表示已处理但无数据
+ * - 目录：应使用 buildins_is_dir() 判断，不应调用此函数
+ * 
  * @param info 资源信息结构（必须是可写的）
- * @return 解压后的数据指针，失败返回 NULL
+ * @return 解压后的数据指针，空文件返回 (void*)1，失败返回 NULL
  */
 void* buildins_decompressed(buildin_file_info_st *info);
 
@@ -104,6 +161,7 @@ FILE* buildins_to_tmp_file(buildin_file_info_st *info);
  */
 int buildins_to_tmp_fd(buildin_file_info_st *info, char **out_path);
 
+///////////////////////////////////////////////////////////////////////////////
 #ifdef __cplusplus
 }
 #endif

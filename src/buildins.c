@@ -3,12 +3,11 @@
  */
 
 #include "buildins.h"
-#include "vfile.h"
-#include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <zlib.h>
 #include <errno.h>
+#include <assert.h>
+#include <zlib.h>
+#include "buildins/sysroot.h"
 
 #ifndef _WIN32
 #include <fcntl.h>
@@ -43,22 +42,43 @@ static uint32_t hash_string(const char *str) {
 }
 
 /**
- * 解压 zlib 数据到内存
+ * 解压 gzip 数据到内存
+ * gzip 格式 = 10字节头部 + DEFLATE数据 + 8字节尾部(CRC32+原始大小)
+ * 使用 inflate() + Z_GZIP 窗口位（15+16）
  */
 static int decompress_gzip(const uint8_t *src, size_t src_len,
                            uint8_t *dst, size_t dst_len) {
-    uLongf out_len = (uLongf)dst_len;
-    int ret = uncompress(dst, &out_len, src, src_len);
+    z_stream strm;
+    memset(&strm, 0, sizeof(strm));
+    
+    // 初始化 inflate，windowBits = 15 + 16 表示 gzip 格式
+    // 15 = 默认窗口大小，+16 = gzip 解码
+    int ret = inflateInit2(&strm, 15 + 16);
     if (ret != Z_OK) {
+        fprintf(stderr, "Buildins: inflateInit2 failed (error %d)\n", ret);
+        return -1;
+    }
+    
+    strm.next_in = (Bytef*)src;
+    strm.avail_in = src_len;
+    strm.next_out = dst;
+    strm.avail_out = dst_len;
+    
+    ret = inflate(&strm, Z_FINISH);
+    inflateEnd(&strm);
+    
+    if (ret != Z_STREAM_END) {
         fprintf(stderr, "Buildins: Decompression failed (error %d)\n", ret);
         return -1;
     }
-    // 验证解压后大小是否合理（允许一定误差）
-    if (out_len > (uLongf)dst_len) {
+    
+    // 验证解压后大小
+    if (strm.total_out > dst_len) {
         fprintf(stderr, "Buildins: Decompressed size (%lu) exceeds buffer (%zu)\n", 
-                out_len, dst_len);
+                strm.total_out, dst_len);
         return -1;
     }
+    
     return 0;
 }
 
@@ -78,8 +98,8 @@ void buildins_cleanup(void) {
     // 遍历链表，释放所有资源
     buildin_file_info_st *node = (buildin_file_info_st*)BUILDINS_LS;
     while (node) {
-        // 释放解压后的数据
-        if (node->raw) {
+        // 释放解压后的数据（跳过空文件的特殊标记和目录）
+        if (node->raw && node->raw != (void*)1 && !buildins_is_dir(node)) {
             free(node->raw);
             node->raw = NULL;
         }
@@ -98,15 +118,24 @@ void buildins_cleanup(void) {
 }
 
 /**
+ * 判断 buildins 条目是否为目录
+ */
+int buildins_is_dir(const buildin_file_info_st *info) {
+    return info && info->comp == BUILDINS_DIR_FLAG;
+}
+
+/**
  * 根据 URI 查找资源（混合策略：静态哈希表 or 二分查找）
  */
 buildin_file_info_st* buildins_find(const char *uri) {
     if (!uri || BUILDINS_FT_SIZE == 0) {
+        fprintf(stderr, "[buildins_find] NULL uri or empty FT\n");
         return NULL;
     }
     
     // 计算 URI 哈希
     uint32_t target_id = hash_string(uri);
+    fprintf(stderr, "[buildins_find] Searching: '%s' (id=%u)\n", uri, target_id);
     
 #ifdef BUILDINS_HASH_TABLE_SIZE
     // 使用静态哈希表查找 O(1)
@@ -116,35 +145,55 @@ buildin_file_info_st* buildins_find(const char *uri) {
     if (bucket) {
         for (int i = 0; bucket[i]; i++) {
             if (bucket[i]->id == target_id && strcmp(bucket[i]->uri, uri) == 0) {
+                fprintf(stderr, "[buildins_find] Found via hashtable\n");
                 return (buildin_file_info_st*)bucket[i];
             }
         }
     }
+    fprintf(stderr, "[buildins_find] Not found in hashtable\n");
 #else
     // 使用二分查找 O(log n)
     int left = 0;
     int right = BUILDINS_FT_SIZE - 1;
+    fprintf(stderr, "[buildins_find] Using binary search, size=%d\n", BUILDINS_FT_SIZE);
     
+    int iterations = 0;
     while (left <= right) {
+        iterations++;
+        if (iterations > 20) {
+            fprintf(stderr, "[buildins_find] ERROR: Too many iterations, breaking\n");
+            break;
+        }
+        
         int mid = left + (right - left) / 2;
         buildin_file_info_st *item = BUILDINS_FT[mid];
+        
+        fprintf(stderr, "[buildins_find] [iter=%d, L=%d, R=%d, M=%d] id=%u (target=%u), uri='%s'\n",
+                iterations, left, right, mid, item->id, target_id, item->uri);
         
         if (item->id == target_id) {
             // ID 匹配，再验证 URI（防止哈希冲突）
             int cmp = strcmp(item->uri, uri);
+            fprintf(stderr, "[buildins_find] ID MATCH! strcmp('%s', '%s') = %d\n", item->uri, uri, cmp);
             if (cmp == 0) {
+                fprintf(stderr, "[buildins_find] Found!\n");
                 return item;
             } else if (cmp < 0) {
+                fprintf(stderr, "[buildins_find] URI mismatch, search right\n");
                 left = mid + 1;
             } else {
+                fprintf(stderr, "[buildins_find] URI mismatch, search left\n");
                 right = mid - 1;
             }
         } else if (item->id < target_id) {
+            fprintf(stderr, "[buildins_find] ID < target, search right\n");
             left = mid + 1;
         } else {
+            fprintf(stderr, "[buildins_find] ID > target, search left\n");
             right = mid - 1;
         }
     }
+    fprintf(stderr, "[buildins_find] Not found via binary search (final: L=%d, R=%d)\n", left, right);
 #endif
     
     return NULL;
@@ -161,6 +210,13 @@ void* buildins_decompressed(buildin_file_info_st *info) {
     
     // 如果已经解压过，直接返回
     if (info->raw) {
+        return info->raw;
+    }
+    
+    // 空文件特殊处理：直接返回一个特殊标记（非 NULL，表示"已处理"）
+    if (info->orig_sz == 0) {
+        // 使用 (void*)1 作为标记，避免 malloc(0) 的未定义行为
+        info->raw = (void*)1;
         return info->raw;
     }
     
@@ -266,12 +322,14 @@ vfile_st* buildins_acquire_vfile(buildin_file_info_st *info) {
     
     fprintf(stderr, "  → 新建vfile: fd=%d\n", vf->fd);
     
-    // 写入数据
-    if (vfile_write(vf, raw_data, info->orig_sz) != 0) {
-        fprintf(stderr, "Buildins: Failed to write vfile for %s\n", info->uri);
-        vfile_close(vf);
-        free(vf);
-        return NULL;
+    // 写入数据（空文件特殊处理：orig_sz=0 时跳过写入）
+    if (info->orig_sz > 0) {
+        if (vfile_write(vf, raw_data, info->orig_sz) != 0) {
+            fprintf(stderr, "Buildins: Failed to write vfile for %s\n", info->uri);
+            vfile_close(vf);
+            free(vf);
+            return NULL;
+        }
     }
     
     fprintf(stderr, "  → vfile写入完成: fd=%d, size=%zu\n", vf->fd, vf->size);
@@ -327,13 +385,15 @@ FILE* buildins_to_tmp_file(buildin_file_info_st *info) {
         return NULL;
     }
     
-    // 写入数据
-    size_t written = fwrite(raw_data, 1, info->orig_sz, fp);
-    if (written != info->orig_sz) {
-        fprintf(stderr, "Buildins: Failed to write tmpfile for %s: wrote %zu/%u bytes\n",
-                info->uri, written, info->orig_sz);
-        fclose(fp);
-        return NULL;
+    // 写入数据（空文件跳过写入）
+    if (info->orig_sz > 0) {
+        size_t written = fwrite(raw_data, 1, info->orig_sz, fp);
+        if (written != info->orig_sz) {
+            fprintf(stderr, "Buildins: Failed to write tmpfile for %s: wrote %zu/%u bytes\n",
+                    info->uri, written, info->orig_sz);
+            fclose(fp);
+            return NULL;
+        }
     }
     
     // 定位回文件开头
@@ -367,14 +427,16 @@ int buildins_to_tmp_fd(buildin_file_info_st *info, char **out_path) {
         return -1;
     }
     
-    // 写入数据
-    ssize_t written = write(fd, raw_data, info->orig_sz);
-    if (written != (ssize_t)info->orig_sz) {
-        fprintf(stderr, "Buildins: Failed to write temp file for %s: wrote %zd/%u bytes\n",
-                info->uri, written, info->orig_sz);
-        close(fd);
-        unlink(template);
-        return -1;
+    // 写入数据（空文件跳过写入）
+    if (info->orig_sz > 0) {
+        ssize_t written = write(fd, raw_data, info->orig_sz);
+        if (written != (ssize_t)info->orig_sz) {
+            fprintf(stderr, "Buildins: Failed to write temp file for %s: wrote %zd/%u bytes\n",
+                    info->uri, written, info->orig_sz);
+            close(fd);
+            unlink(template);
+            return -1;
+        }
     }
     
     // 定位回文件开头

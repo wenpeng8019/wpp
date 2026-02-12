@@ -46,6 +46,18 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# 从头文件中读取哈希表配置参数
+BUILDINS_H="$PROJECT_ROOT/src/buildins.h"
+read_hash_config() {
+    local param=$1
+    grep "^#define ${param}" "$BUILDINS_H" | awk '{print $3}'
+}
+
+HASH_INDEX_THRESHOLD=$(read_hash_config "HASH_INDEX_THRESHOLD")
+HASH_MAX_DEPTH_THRESHOLD=$(read_hash_config "HASH_MAX_DEPTH_THRESHOLD")
+HASH_MIN_LOAD_FACTOR=$(read_hash_config "HASH_MIN_LOAD_FACTOR")
+HASH_MAX_ITERATIONS=$(read_hash_config "HASH_MAX_ITERATIONS")
+
 # DJB2 哈希函数
 # ⚠️  必须与 src/buildins.c 中的 hash_string() 保持完全一致！
 # 算法: hash = hash * 33 + c，初值 5381
@@ -123,11 +135,51 @@ if [ $FILE_COUNT -eq 0 ]; then
     echo -e "${YELLOW}警告: 没有找到文件，生成空资源${NC}"
 fi
 
+# 提取所有目录路径
+TEMP_DIRS=$(mktemp)
+if [ -f "$TEMP_FILES" ] && [ $FILE_COUNT -gt 0 ]; then
+    # 从文件路径中提取所有父目录
+    awk -F'|' '{print $3}' "$TEMP_FILES" | while IFS= read -r uri; do
+        # 逐级提取父目录：/a/b/c.txt -> /a/b -> /a -> /
+        dir="${uri%/*}"
+        while [ -n "$dir" ] && [ "$dir" != "/" ]; do
+            echo "$dir"
+            dir="${dir%/*}"
+        done
+        # 添加根目录
+        [ -n "$uri" ] && echo "/"
+    done | sort -u > "$TEMP_DIRS"
+    
+    DIR_COUNT=$(wc -l < "$TEMP_DIRS" | tr -d ' ')
+    echo -e "  ${GREEN}✓${NC} 提取 $DIR_COUNT 个目录"
+    
+    # 为每个目录生成条目
+    while IFS= read -r dir; do
+        id=$(hash_string "$dir")
+        # 目录符号名：用 _ 开头，根目录直接是 _
+        if [ "$dir" = "/" ]; then
+            symbol="_"
+        else
+            # /include -> _include, /lib/sqtp -> _lib_sqtp
+            symbol=$(echo "$dir" | sed 's/^\//_/; s/\//_/g')
+        fi
+        # 目录条目：索引|文件路径(空)|URI|ID|符号名|类型|目标(空)
+        echo "$FILE_COUNT|DIR|$dir|$id|$symbol|directory|" >> "$TEMP_FILES"
+        FILE_COUNT=$((FILE_COUNT + 1))
+    done < "$TEMP_DIRS"
+    
+    rm -f "$TEMP_DIRS"
+    echo -e "  ${GREEN}✓${NC} 总计 $FILE_COUNT 个条目（文件+目录）"
+fi
+echo
+
 # 按 URI 重新排序并重新编号（确保链表按 URI 字符串顺序）
 if [ -f "$TEMP_FILES" ] && [ $FILE_COUNT -gt 0 ]; then
     TEMP_SORTED=$(mktemp)
-    # 按 URI（第3列）排序，然后重新分配索引
-    sort -t'|' -k3 "$TEMP_FILES" | awk -F'|' 'BEGIN{idx=0} {printf "%d|%s|%s|%s|%s|%s|%s\n", idx++, $2, $3, $4, $5, $6, $7}' > "$TEMP_SORTED"
+    # 按 URI（第3列）排序，使用 C locale 确保目录排在其内容之前
+    # -k3,3 明确指定只排序第3字段，不包含后续字段
+    LC_ALL=C sort -t'|' -k3,3 "$TEMP_FILES" | awk -F'|' 'BEGIN{idx=0} {printf "%d|%s|%s|%s|%s|%s|%s\n", idx++, $2, $3, $4, $5, $6, $7}' > "$TEMP_SORTED"
+    
     mv "$TEMP_SORTED" "$TEMP_FILES"
     echo -e "${GREEN}按 URI 排序完成，链表遍历顺序: URI 字典序${NC}"
     echo
@@ -190,17 +242,13 @@ HASH_TABLE_SIZE=0
 HASH_MAX_DEPTH=0
 HASH_LOAD_FACTOR=0
 
-if [ $FILE_COUNT -ge 50 ]; then
-    echo -e "${GREEN}资源数 >= 50，开始自适应哈希表优化...${NC}"
+if [ $FILE_COUNT -ge $HASH_INDEX_THRESHOLD ]; then
+    echo -e "${GREEN}资源数 >= $HASH_INDEX_THRESHOLD，开始自适应哈希表优化...${NC}"
     
     # 初始表大小：资源数 * 2 的下一个 2 的幂
     HASH_TABLE_SIZE=$(next_pow2 $((FILE_COUNT * 2)))
     
-    MAX_DEPTH_THRESHOLD=3
-    MIN_LOAD_FACTOR=0.3
-    MAX_ITERATIONS=5
-    
-    for (( iter=0; iter<MAX_ITERATIONS; iter++ )); do
+    for (( iter=0; iter<HASH_MAX_ITERATIONS; iter++ )); do
         result=$(build_and_analyze_hashtable $HASH_TABLE_SIZE)
         
         size=$(echo "$result" | cut -d'|' -f1)
@@ -211,11 +259,11 @@ if [ $FILE_COUNT -ge 50 ]; then
         echo "  [尝试 $((iter+1))] 表大小=$size, 最大桶深=$max_depth, 负载因子=$load_factor, 冲突率=$collision%"
         
         # 判断是否满足条件
-        if [ $max_depth -gt $MAX_DEPTH_THRESHOLD ]; then
+        if [ $max_depth -gt $HASH_MAX_DEPTH_THRESHOLD ]; then
             # 冲突太多，表太小
             HASH_TABLE_SIZE=$((HASH_TABLE_SIZE * 2))
             echo "    → 最大桶深过大，表大小翻倍至 $HASH_TABLE_SIZE"
-        elif awk "BEGIN {exit !($load_factor < $MIN_LOAD_FACTOR)}" && [ $((HASH_TABLE_SIZE / 2)) -ge $FILE_COUNT ]; then
+        elif awk "BEGIN {exit !($load_factor < $HASH_MIN_LOAD_FACTOR)}" && [ $((HASH_TABLE_SIZE / 2)) -ge $FILE_COUNT ]; then
             # 负载太低，表太大
             HASH_TABLE_SIZE=$((HASH_TABLE_SIZE / 2))
             echo "    → 负载因子过低，表大小减半至 $HASH_TABLE_SIZE"
@@ -245,27 +293,11 @@ cat > "$TEMP_H" << 'EOF'
 #ifndef BUILDINS_SYSROOT_H
 #define BUILDINS_SYSROOT_H
 
-#include <stdint.h>
-#include <stddef.h>
+#include "../buildins.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/**
- * 内建文件信息结构（链表节点）
- */
-typedef struct buildin_file_info {
-    const struct buildin_file_info*  next;      /* 下一个节点 */
-    const char*                     uri;        /* 资源 URI 路径 */
-    const uint8_t*                  comp;       /* 压缩数据指针 */
-    void*                           raw;        /* 解压后数据（NULL=未解压，懒加载） */
-    void*                           vfile;      /* TCC 虚拟文件对象（NULL=未创建） */
-    uint32_t                        comp_sz;    /* 压缩后大小 */
-    uint32_t                        orig_sz;    /* 解压后大小 */
-    uint32_t                        id;         /* 文件 ID（URI 哈希值） */
-    uint32_t                        vref;       /* 虚拟文件引用计数 */
-} buildin_file_info_st;
 
 /**
  * 内建文件索引表（按 id 排序，支持二分查找）
@@ -287,17 +319,22 @@ EOF
 # 为每个文件声明 extern（带压缩信息注释）
 if [ -f "$TEMP_FILES" ]; then
     while IFS='|' read -r idx file uri id symbol file_type target; do
-        # 计算文件大小和压缩比
-        orig_size=$(wc -c < "$file" | tr -d ' ')
-        comp_size=$(python3 -c "import zlib,sys; data=open('$file','rb').read(); comp=zlib.compress(data); sys.stdout.write(str(len(comp)))")
-        if [ $orig_size -gt 0 ]; then
-            ratio=$(awk "BEGIN {printf \"%.1f\", $comp_size * 100.0 / $orig_size}")
+        if [ "$file_type" = "directory" ]; then
+            # 目录条目：使用 buildin_dir_info_st 类型（2个空格对齐）
+            echo "extern buildin_dir_info_st  ${symbol};  // [DIR]" >> "$TEMP_H"
         else
-            ratio="0.0"
+            # 文件条目：使用 buildin_file_info_st 类型，计算文件大小和压缩比
+            orig_size=$(wc -c < "$file" | tr -d ' ')
+            comp_size=$(gzip -c "$file" | wc -c | tr -d ' ')
+            if [ $orig_size -gt 0 ]; then
+                ratio=$(awk "BEGIN {printf \"%.1f\", $comp_size * 100.0 / $orig_size}")
+            else
+                ratio="0.0"
+            fi
+            comp_size_fmt=$(format_number "$comp_size")
+            orig_size_fmt=$(format_number "$orig_size")
+            echo "extern buildin_file_info_st ${symbol};  // (${comp_size_fmt}/${orig_size_fmt}, ${ratio}%)" >> "$TEMP_H"
         fi
-        comp_size_fmt=$(format_number "$comp_size")
-        orig_size_fmt=$(format_number "$orig_size")
-        echo "extern buildin_file_info_st ${symbol};  // (${comp_size_fmt}/${orig_size_fmt}, ${ratio}%)" >> "$TEMP_H"
     done < "$TEMP_FILES"
 fi
 
@@ -313,8 +350,61 @@ cat > "$TEMP_C" << 'EOF'
  */
 
 #include "sysroot.h"
+#include <stdint.h>
 
 EOF
+
+# 先生成所有目录对象（从后往前，因为链表是反序的）
+if [ -f "$TEMP_FILES" ]; then
+    if command -v tac &> /dev/null; then
+        REV_CMD="tac"
+    else
+        REV_CMD="tail -r"
+    fi
+    
+    TEMP_REV=$(mktemp)
+    $REV_CMD "$TEMP_FILES" > "$TEMP_REV"
+    
+    # 先生成目录对象
+    while IFS='|' read -r idx file uri id symbol file_type target; do
+        [ "$file_type" != "directory" ] && continue
+        
+        # 计算父目录
+        parent_uri="${uri%/*}"
+        [ "$parent_uri" = "" ] && parent_uri="/"
+        [ "$uri" = "/" ] && parent_uri=""
+        
+        if [ -n "$parent_uri" ]; then
+            parent_symbol=$(grep "|$parent_uri|" "$TEMP_FILES" | cut -d'|' -f5)
+            parent_ref="&${parent_symbol}"
+        else
+            parent_ref="NULL"
+        fi
+        
+        # 判断 next 指针
+        if [ "$idx" -eq "$((FILE_COUNT - 1))" ]; then
+            next_symbol="NULL"
+        else
+            next_idx=$((idx + 1))
+            next_symbol=$(grep "^${next_idx}|" "$TEMP_FILES" | cut -d'|' -f5)
+            next_symbol="&${next_symbol}"
+        fi
+        
+        echo "/* $uri (id=$id) [directory] */" >> "$TEMP_C"
+        cat >> "$TEMP_C" << CEOF
+buildin_dir_info_st ${symbol} = {
+    .next = ${next_symbol},
+    .id = ${id},
+    .uri = "${uri}",
+    .parent = ${parent_ref},
+    .flag = (const uint8_t*)(uintptr_t)-1  /* 目录标识 */
+};
+CEOF
+        echo >> "$TEMP_C"
+    done < "$TEMP_REV"
+    
+    rm -f "$TEMP_REV"
+fi
 
 # 生成压缩数据（反序，最后一个文件先定义）
 TOTAL_ORIG=0
@@ -333,20 +423,6 @@ if [ -f "$TEMP_FILES" ]; then
     $REV_CMD "$TEMP_FILES" > "$TEMP_REV"
     
     while IFS='|' read -r idx file uri id symbol file_type target; do
-        orig_size=$(wc -c < "$file" | tr -d ' ')
-        
-        # 压缩并生成数组
-        if [ "$file_type" = "symlink" ]; then
-            echo "/* $uri (id=$id) [symlink → $target] */" >> "$TEMP_C"
-        else
-            echo "/* $uri (id=$id) */" >> "$TEMP_C"
-        fi
-        echo "static const uint8_t ${symbol}_z[] = {" >> "$TEMP_C"
-        python3 -c "import zlib,sys; data=open('$file','rb').read(); comp=zlib.compress(data); sys.stdout.buffer.write(comp)" | xxd -i >> "$TEMP_C"
-        echo "};" >> "$TEMP_C"
-        
-        comp_size=$(python3 -c "import zlib,sys; data=open('$file','rb').read(); comp=zlib.compress(data); sys.stdout.write(str(len(comp)))")
-        
         # 判断是否是最后一个（实际上是第一个，因为反序）
         if [ "$idx" -eq "$((FILE_COUNT - 1))" ]; then
             next_symbol="NULL"
@@ -357,16 +433,47 @@ if [ -f "$TEMP_FILES" ]; then
             next_symbol="&${next_symbol}"
         fi
         
+        # 目录条目：跳过，已经在前面生成过了
+        if [ "$file_type" = "directory" ]; then
+            continue
+        fi
+        
+        # 文件条目：生成压缩数据
+        orig_size=$(wc -c < "$file" | tr -d ' ')
+        
+        # 计算文件所属目录
+        dir_uri="${uri%/*}"
+        [ "$dir_uri" = "" ] && dir_uri="/"
+        dir_symbol=$(grep "|$dir_uri|" "$TEMP_FILES" | grep "|directory|" | cut -d'|' -f5)
+        if [ -n "$dir_symbol" ]; then
+            dir_ref="&${dir_symbol}"
+        else
+            dir_ref="NULL"
+        fi
+        
+        # 压缩并生成数组
+        if [ "$file_type" = "symlink" ]; then
+            echo "/* $uri (id=$id) [symlink → $target] */" >> "$TEMP_C"
+        else
+            echo "/* $uri (id=$id) */" >> "$TEMP_C"
+        fi
+        echo "static const uint8_t ${symbol}_z[] = {" >> "$TEMP_C"
+        gzip -c "$file" | xxd -i >> "$TEMP_C"
+        echo "};" >> "$TEMP_C"
+        
+        comp_size=$(gzip -c "$file" | wc -c | tr -d ' ')
+        
         cat >> "$TEMP_C" << CEOF
 buildin_file_info_st ${symbol} = {
     .next = ${next_symbol},
+    .id = ${id},
     .uri = "${uri}",
+    .dir = ${dir_ref},
     .comp = ${symbol}_z,
     .raw = NULL,
     .vfile = NULL,
     .comp_sz = sizeof(${symbol}_z),
     .orig_sz = ${orig_size},
-    .id = ${id},
     .vref = 0
 };
 
@@ -374,6 +481,7 @@ CEOF
         
         echo "  [$((FILE_COUNT - idx))] ${file} (${orig_size}B → ${comp_size}B)"
         
+        # 只统计文件大小，不包含目录
         TOTAL_ORIG=$((TOTAL_ORIG + orig_size))
         TOTAL_COMP=$((TOTAL_COMP + comp_size))
     done < "$TEMP_REV"
@@ -399,7 +507,7 @@ fi
 # 添加哈希表配置（如果启用）
 if [ $HASH_TABLE_SIZE -gt 0 ]; then
     echo >> "$TEMP_H"
-    echo "/* 静态哈希表配置（预构建） */" >> "$TEMP_H"
+    echo "/* 静态哈希表配置（预构建，基于 buildins.h 中的参数自适应计算） */" >> "$TEMP_H"
     echo "#define BUILDINS_HASH_TABLE_SIZE ${HASH_TABLE_SIZE}" >> "$TEMP_H"
     echo "#define BUILDINS_HASH_MAX_DEPTH ${HASH_MAX_DEPTH}" >> "$TEMP_H"
     echo "#define BUILDINS_HASH_LOAD_FACTOR ${HASH_LOAD_FACTOR}f" >> "$TEMP_H"
@@ -432,7 +540,12 @@ if [ -f "$TEMP_FILES" ]; then
     first=1
     sort -t'|' -k4 -n "$TEMP_FILES" | while IFS='|' read -r idx file uri id symbol file_type target; do
         [ $first -eq 0 ] && echo "," >> "$TEMP_C"
-        echo -n "    &${symbol}" >> "$TEMP_C"
+        # 目录条目需要类型转换
+        if [ "$file_type" = "directory" ]; then
+            echo -n "    (buildin_file_info_st*)&${symbol}" >> "$TEMP_C"
+        else
+            echo -n "    &${symbol}" >> "$TEMP_C"
+        fi
         first=0
     done
     echo >> "$TEMP_C"
@@ -445,8 +558,15 @@ cat >> "$TEMP_C" << EOF
 EOF
 
 if [ $FILE_COUNT -gt 0 ]; then
-    first_symbol=$(head -1 "$TEMP_FILES" | cut -d'|' -f5)
-    echo "buildin_file_info_st* BUILDINS_LS = &${first_symbol};" >> "$TEMP_C"
+    first_line=$(head -1 "$TEMP_FILES")
+    first_symbol=$(echo "$first_line" | cut -d'|' -f5)
+    first_type=$(echo "$first_line" | cut -d'|' -f6)
+    # 根目录是第一个条目，需要类型转换
+    if [ "$first_type" = "directory" ]; then
+        echo "buildin_file_info_st* BUILDINS_LS = (buildin_file_info_st*)&${first_symbol};" >> "$TEMP_C"
+    else
+        echo "buildin_file_info_st* BUILDINS_LS = &${first_symbol};" >> "$TEMP_C"
+    fi
 else
     echo "buildin_file_info_st* BUILDINS_LS = NULL;" >> "$TEMP_C"
 fi
