@@ -343,21 +343,20 @@ int tcc_configure(TCCState *s) {
     tcc_add_library_path(s, "/usr/lib");
     tcc_add_library_path(s, "/usr/local/lib");
 
-    /* ========== 预加载 TCC 运行时库 ========== 
-     * 用途：预先加载 TCC 运行时库文件到编译状态
-     * 文件：
-     *   - libtcc1.a - TCC 运行时库（内置函数实现）
-     *   - runmain.o - 程序入口对象（tcc_run 需要）
-     * 注意：这些文件位于 buildins/lib，通过回调拦截返回虚拟文件
+    /* ========== TCC 运行时库自动处理说明 ========== 
+     * TinyCC 会自动处理以下运行时库文件，无需手动添加：
+     * 
+     * 1. libtcc1.a - TCC 运行时库（内置函数实现）
+     *    由 tccelf.c:1847 自动调用 tcc_add_support(s1, TCC_LIBTCC1)
+     * 
+     * 2. runmain.o - 程序入口对象（tcc_run 需要）  
+     *    由 tccrun.c:227 自动调用 tcc_add_support(s1, "runmain.o")
+     * 
+     * buildins/lib/ 中的这些文件仅用作虚拟文件系统中的默认查找路径，
+     * 当 TCC 内部查找这些文件时会通过回调函数拦截并提供。
+     * 
+     * 手动 tcc_add_file() 会导致符号重复定义错误，应避免。
      */
-    if (tcc_add_file(s, "/lib/libtcc1.a") < 0) {
-        fprintf(stderr, "TCC EVN: Failed to load libtcc1.a\n");
-        return -1;
-    }
-    if (tcc_add_file(s, "/lib/runmain.o") < 0) {
-        fprintf(stderr, "TCC EVN: Failed to load runmain.o\n");
-        return -1;
-    }
 
     /* ========== 预编译基础标准头文件 ========== 
      * 用途：预先编译 TCC 基础头文件，加速后续用户代码编译
