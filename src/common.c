@@ -94,7 +94,9 @@ int ARGS_parse(int argc, char** argv, ...) {
     va_end(args);
     g_has_req = (req_count > 0);
 
-    int show_help = (argc == 1);
+    // 只有当位置参数是必选的（不以 '[' 开头）且 argc == 1 时才显示帮助
+    // 如果位置参数是可选的（如 "[web_root]"），则允许无参数运行
+    int show_help = (argc == 1 && g_pos_desc && g_pos_desc[0] != '[');
     g_pos_count = 0;
     char* pos_args[argc];  // 临时存储位置参数
     int w = 1;             // 写入位置（选项及其值前移到这里）
@@ -262,8 +264,8 @@ int ARGS_parse(int argc, char** argv, ...) {
 
 int ARGS_print(const char* arg0) {
 
-    // 动态生成 Usage 信息
-    const char* opt_str = g_args_def ? (g_has_req ? "OPTIONS" : "[OPTIONS]") : "";
+    // 动态生成 Usage 信息（始终显示 [OPTIONS]，因为至少有 -h --help）
+    const char* opt_str = g_has_req ? "OPTIONS" : "[OPTIONS]";
     const char* arg_str = g_pos_desc ? g_pos_desc : (g_pos_count > 0 ? "ARGS..." : "");
     printf("Usage: %s%s%s%s%s\n", arg0,
            *arg_str ? " " : "", arg_str,
@@ -283,31 +285,34 @@ int ARGS_print(const char* arg0) {
         }
     }
 
-    // 再输出选项列表
-    if (g_args_def) {
-
-        // 先遍历计算最大长选项名长度
-        int max_l_len = 0;
-        for (arg_def_st* def = g_args_def; def != NULL; def = def->next) {
-            int len = def->l ? (int)strlen(def->l) : 0;
-            if (len > max_l_len) max_l_len = len;
-        }
-
-        printf("\nOptions:\n");
-        for (arg_def_st* def = g_args_def; def != NULL; def = def->next) {
-            const char* type_str = "";
-            switch (def->type) {
-                case ARG_INT:   type_str = "<int>"; break;
-                case ARG_FLOAT: type_str = "<float>"; break;
-                case ARG_BOOL:  type_str = ""; break;
-                case ARG_STR:   type_str = "<string>"; break;
-                case ARG_DIR:   type_str = "<dir>"; break;
-                case ARG_LS:    type_str = "<list>"; break;
-            }
-            printf("  -%c, --%-*s  %-10s %s%s\n", def->s, max_l_len, def->l, type_str,
-                   def->req ? "\033[31m[required]\033[0m " : "[optional] ", def->desc);
-        }
+    // 输出选项列表（始终输出，至少包含内置的 -h --help）
+    // 先遍历计算最大长选项名长度
+    int max_l_len = 4;  // "help" 的长度
+    for (arg_def_st* def = g_args_def; def != NULL; def = def->next) {
+        int len = def->l ? (int)strlen(def->l) : 0;
+        if (len > max_l_len) max_l_len = len;
     }
+
+    printf("\nOptions:\n");
+    
+    // 首先输出用户定义的选项
+    for (arg_def_st* def = g_args_def; def != NULL; def = def->next) {
+        const char* type_str = "";
+        switch (def->type) {
+            case ARG_INT:   type_str = "<int>"; break;
+            case ARG_FLOAT: type_str = "<float>"; break;
+            case ARG_BOOL:  type_str = ""; break;
+            case ARG_STR:   type_str = "<string>"; break;
+            case ARG_DIR:   type_str = "<dir>"; break;
+            case ARG_LS:    type_str = "<list>"; break;
+        }
+        printf("  -%c, --%-*s  %-10s %s%s\n", def->s, max_l_len, def->l, type_str,
+               def->req ? "\033[31m[required]\033[0m " : "[optional] ", def->desc);
+    }
+    
+    // 最后输出内置的帮助选项
+    printf("  -%c, --%-*s  %-10s %s\n", 'h', max_l_len, "help", "", 
+           "[optional] Show this help message and exit");
 
     putchar('\n');
     return 0;

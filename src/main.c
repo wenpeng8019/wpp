@@ -5,6 +5,7 @@
 #include <signal.h>
 #include <unistd.h>
 #include <errno.h>
+#include <limits.h>
 #include <libtcc.h>
 #include <wpp/wpp.h>
 #include <common.h>
@@ -12,13 +13,22 @@
 #include "buildins.h"
 #include "tcc_evn.h"
 
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#endif
+
 // 预配置的 TCCState（fork 后子进程继承）
 TCCState *cgi_tcc_state = NULL;
 
-#define PID_FILE ".pid"
 #define URL_PATH "/hello.html"
 
-ARGS_B(false, stop, 0, "stop", "Stop current running wpp");
+ARGS_B(false, stop, 's', "stop", "Stop current running wpp");
+
+// PID 文件路径（动态计算，位于 Web 根目录下）
+// Web 根目录规则：
+// - 有位置参数：使用位置参数指定的目录
+// - 无位置参数：使用可执行文件所在目录
+static char g_pid_file[PATH_MAX] = {0};
 
 // 保存主进程 PID，用于退出时删除 PID 文件
 static pid_t g_main_pid = 0;
@@ -107,17 +117,72 @@ void init_shared_memory_db(void) {
 
 int main(int argc, char *argv[]) {
 
-    // 解析命令行参数（如果有的话）
-    if (argc > 1) {
+    // 设置帮助信息
+    ARGS_usage("[web_root]",
+        "WPP Server - Web++, an HTTP server with C CGI and SQTP support\n\n"
+        "Examples:\n"
+        "  $0              Start server using executable directory as web root\n"
+        "  $0 .            Start server using current directory as web root\n"
+        "  $0 /path/to/www Start server using specified directory as web root\n"
+        "  $0 --stop       Stop running server\n\n"
+        "Features:\n"
+        "  - C CGI support via TinyCC\n"
+        "  - SQTP (SQL Transfer Protocol) for database queries\n"
+        "  - Automatic browser launch on startup\n"
+        "  - Single-instance mode with PID file management");
 
-        ARGS_parse(argc, argv,
-            &ARGS_DEF_stop,
-            NULL);
-        
-        // 如果指定了 --stop 参数，停止当前运行的服务
-        if (ARGS_stop.i64) {
-            return stop_pid() == 0 ? 0 : 1;
+    // 解析命令行参数
+    int pos_count = ARGS_parse(argc, argv,
+        &ARGS_DEF_stop,
+        NULL);
+    
+    // 确定 Web 根目录
+    char web_root[PATH_MAX] = {0};
+    
+    if (pos_count > 0) {
+        // 有位置参数：使用位置参数作为 Web 根目录
+        strncpy(web_root, argv[argc - pos_count], sizeof(web_root) - 1);
+    } else {
+        // 无位置参数：使用可执行文件所在目录作为 Web 根目录
+#ifdef __APPLE__
+        uint32_t size = sizeof(web_root);
+        if (_NSGetExecutablePath(web_root, &size) == 0) {
+            char *dir_end = strrchr(web_root, '/');
+            if (dir_end) {
+                *dir_end = '\0';
+            }
         }
+#else
+        ssize_t len = readlink("/proc/self/exe", web_root, sizeof(web_root) - 1);
+        if (len != -1) {
+            web_root[len] = '\0';
+            char *dir_end = strrchr(web_root, '/');
+            if (dir_end) {
+                *dir_end = '\0';
+            }
+        }
+#endif
+        // Fallback: 使用 argv[0]
+        if (!web_root[0]) {
+            strncpy(web_root, argv[0], sizeof(web_root) - 1);
+            char *dir_end = strrchr(web_root, '/');
+            if (dir_end) {
+                *dir_end = '\0';
+            }
+        }
+    }
+    
+    // 如果仍然无法确定，使用当前目录
+    if (!web_root[0]) {
+        strncpy(web_root, ".", sizeof(web_root) - 1);
+    }
+    
+    // 设置 PID 文件路径（在 Web 根目录下）
+    snprintf(g_pid_file, sizeof(g_pid_file), "%s/.pid", web_root);
+    
+    // 如果指定了 --stop 参数，停止当前运行的服务
+    if (ARGS_stop.i64) {
+        return stop_pid() == 0 ? 0 : 1;
     }
     
     printf("WPP Server with SQTP Support\n");
@@ -187,9 +252,11 @@ int main(int argc, char *argv[]) {
     init_shared_memory_db();
     
     printf("启动 HTTP/SQTP 服务器...\n");
+    printf("Web 根目录: %s\n", web_root);
+    printf("PID 文件: %s\n", g_pid_file);
 
     // 使用动态端口分配（传入 0, 0），httpd 会在获得端口后写入 PID 文件
-    httpd_main(0, 0, true, true, URL_PATH, NULL, NULL, NULL, PID_FILE);
+    httpd_main(0, 0, true, true, URL_PATH, NULL, web_root, NULL, NULL, g_pid_file);
 
     // httpd_main 主进程进入监听循环不会返回，只有子进程会到达这里
     return 0;
@@ -202,7 +269,7 @@ int main(int argc, char *argv[]) {
  */
 static void clean_pid(void) {
     if (getpid() == g_main_pid) {
-        unlink(PID_FILE);
+        unlink(g_pid_file);
     }
 }
 
@@ -212,7 +279,7 @@ static void clean_pid(void) {
  * @return 返回运行中实例的 PID (>0)，0 表示可以启动，-1 表示检查出错
  */
 static pid_t check_running(int *out_port) {
-    FILE* fp = fopen(PID_FILE, "r");
+    FILE* fp = fopen(g_pid_file, "r");
     if (!fp) {
         // PID 文件不存在，可以启动
         return 0;
@@ -225,7 +292,7 @@ static pid_t check_running(int *out_port) {
     
     if (matched < 1 || pid <= 0) {
         // PID 文件损坏，删除并继续
-        unlink(PID_FILE);
+        unlink(g_pid_file);
         return 0;
     }
     
@@ -241,7 +308,7 @@ static pid_t check_running(int *out_port) {
     // 进程不存在，删除陈旧的 PID 文件
     if (errno == ESRCH) {
         printf("⚠️  删除陈旧的 PID 文件 (进程 %d 已不存在)\n", pid);
-        unlink(PID_FILE);
+        unlink(g_pid_file);
         return 0;
     }
     
@@ -254,9 +321,9 @@ static pid_t check_running(int *out_port) {
  * @brief 读取 PID 文件并停止进程
  */
 static int stop_pid(void) {
-    FILE* fp = fopen(PID_FILE, "r");
+    FILE* fp = fopen(g_pid_file, "r");
     if (!fp) {
-        fprintf(stderr, "❌ 找不到 PID 文件 %s，服务可能未运行\n", PID_FILE);
+        fprintf(stderr, "❌ 找不到 PID 文件 %s，服务可能未运行\n", g_pid_file);
         return -1;
     }
     
@@ -273,7 +340,7 @@ static int stop_pid(void) {
     // 检查进程是否存在
     if (kill(pid, 0) != 0) {
         fprintf(stderr, "⚠️  进程 %d 不存在，清理 PID 文件\n", pid);
-        unlink(PID_FILE);
+        unlink(g_pid_file);
         return -1;
     }
     
@@ -289,7 +356,7 @@ static int stop_pid(void) {
     while (retry < 50) {  // 最多等待 5 秒
         if (kill(pid, 0) != 0) {
             printf("✓ 服务已停止\n");
-            unlink(PID_FILE);
+            unlink(g_pid_file);
             return 0;
         }
         usleep(100000);  // 100ms
@@ -299,6 +366,6 @@ static int stop_pid(void) {
     // 如果还没退出，发送 SIGKILL
     fprintf(stderr, "⚠️  进程未响应，强制终止...\n");
     kill(pid, SIGKILL);
-    unlink(PID_FILE);
+    unlink(g_pid_file);
     return 0;
 }
