@@ -2,7 +2,7 @@
 
 ## 概述
 
-WPP (Web Programming Platform) 是一个集成的Web服务器平台，提供HTTP服务、动态C代码编译执行、数据库查询协议(SQTP)、虚拟文件系统等功能。整个架构设计采用模块化组件，支持零配置启动和开发调试。
+WPP (Web Programming Platform) 是一个集成的Web服务器平台，提供HTTP服务、动态C代码编译执行、结构化查询传输协议(SQTP)、虚拟文件系统等功能。整个架构设计采用模块化组件，支持零配置启动和开发调试。
 
 ## 系统架构图
 
@@ -159,25 +159,38 @@ typedef struct vfile {
 
 ### 5. SQTP 协议 (`http_sqtp.c`)
 
-**理念**：RESTful数据库访问
-- URL即SQL：直接在URL中编码SQL语句
-- HTTP动词映射：GET=SELECT, POST=INSERT等
+**理念**：结构化查询传输协议
+- 自定义HTTP方法：SQTP-SELECT、SQTP-INSERT等
+- 头部参数：通过HTTP头传递查询参数
+- URI路径：指定数据库类型和文件路径
 - JSON响应：标准化数据交换格式
+
+**URI 路径说明**：
+- **`/`** - 内存数据库，临时操作，数据不保存
+- **`/.db`** - 默认文件数据库，首次访问时自动创建
+- **`/db/filename`** - 自定义数据库，需由C CGI主动创建
 
 **请求示例**：
 ```bash
 # SELECT查询
-GET /SELECT%20*%20FROM%20users%20WHERE%20id=1
+curl -X SQTP-SELECT localhost:8080/.db \
+  -H "FROM: users" \
+  -H "WHERE: age > 18"
 
 # INSERT操作
-POST /INSERT%20INTO%20users%20VALUES('Alice',25)
+curl -X SQTP-INSERT localhost:8080/.db \
+  -H "TABLE: users" \
+  -H "COLUMNS: name, age" \
+  -H "Content-Type: application/json" \
+  -d '["Alice", 25]'
 
-# 批量查询
-POST /{"queries":["SELECT * FROM table1","SELECT * FROM table2"]}
+# 内存数据库操作
+curl -X SQTP-SELECT localhost:8080/ \
+  -H "FROM: users"
 ```
 
 **安全设计**：
-- SQL注入防护：参数化查询
+- SQL注入防护：SQTP参数化查询
 - 权限控制：白名单表访问
 - 请求限制：频率和大小控制
 
@@ -233,13 +246,13 @@ graph TD
     A[请求URI] --> B[计算哈希值]
     B --> C{资源数量>50?}
     C -->|是| D[哈希表查找]
-    C -->|否| E[链表遍历]
+    C -->|否| E[二分查找]
     
     D --> F{哈希命中?} 
     F -->|是| G[验证URI匹配]
     F -->|否| H[返回404]
     
-    E --> I{遍历完成?}
+    E --> I{查找完成?}
     I -->|否| J[比较URI]
     I -->|是| H
     
