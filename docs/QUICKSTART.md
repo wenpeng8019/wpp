@@ -47,12 +47,16 @@ cmake --build .
 
 **SQTP数据库查询:**
 ```bash
-# 创建表并插入数据
-curl -X POST "http://localhost:8080/CREATE%20TABLE%20users(name%20TEXT,age%20INT)"
-curl -X POST "http://localhost:8080/INSERT%20INTO%20users%20VALUES('Alice',25)"
+# 插入测试数据
+curl -X SQTP-INSERT localhost:8080/db/main \
+  -H "TABLE: users" \
+  -H "COLUMNS: name, age" \
+  -H "Content-Type: application/json" \
+  -d '["Alice", 25]'
 
 # 查询数据 (JSON响应)
-curl "http://localhost:8080/SELECT%20*%20FROM%20users"
+curl -X SQTP-SELECT localhost:8080/db/main \
+  -H "FROM: users"
 ```
 
 🎯 **恭喜！** 你已经成功运行了WPP服务器！
@@ -67,21 +71,39 @@ curl "http://localhost:8080/SELECT%20*%20FROM%20users"
 
 ```bash
 # 基本查询
-curl "http://localhost:8080/SELECT%20*%20FROM%20table_name"
+curl -X SQTP-SELECT localhost:8080/db/main \
+  -H "FROM: table_name"
 
 # 带条件查询
-curl "http://localhost:8080/SELECT%20*%20FROM%20users%20WHERE%20age>18"
+curl -X SQTP-SELECT localhost:8080/db/main \
+  -H "FROM: users" \
+  -H "WHERE: age > 18"
 
 # 数据操作
-curl -X POST "http://localhost:8080/INSERT%20INTO%20users%20VALUES('Bob',30)"
-curl -X PUT "http://localhost:8080/UPDATE%20users%20SET%20age=26%20WHERE%20name='Alice'"
-curl -X DELETE "http://localhost:8080/DELETE%20FROM%20users%20WHERE%20age<18"
+curl -X SQTP-INSERT localhost:8080/db/main \
+  -H "TABLE: users" \
+  -H "COLUMNS: name, age" \
+  -H "Content-Type: application/json" \
+  -d '["Bob", 30]'
+  
+curl -X SQTP-UPDATE localhost:8080/db/main \
+  -H "TABLE: users" \
+  -H "WHERE: name='Alice'" \
+  -H "Content-Type: application/json" \
+  -d '{"age": 26}'
+  
+curl -X SQTP-DELETE localhost:8080/db/main \
+  -H "TABLE: users" \
+  -H "WHERE: age < 18"
 ```
 
 **JavaScript客户端示例:**
 ```javascript
 // 使用内置的SQTP客户端库
-const data = await sqtp.query("SELECT * FROM users WHERE status='active'");
+const data = await sqtp.select({
+  from: 'users',
+  where: "status='active'"
+});
 data.forEach(row => console.log(row.name, row.age));
 ```
 
@@ -223,7 +245,9 @@ valgrind --leak-check=full ./build/wpp
 <body>
     <div id="users"></div>
     <script>
-        sqtp.query("SELECT * FROM users").then(data => {
+        sqtp.select({
+          from: 'users'
+        }).then(data => {
             document.getElementById('users').innerHTML = 
                 data.map(u => `<p>${u.name}: ${u.age}</p>`).join('');
         });

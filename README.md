@@ -18,15 +18,21 @@
 
 ## ✨ 核心特性
 
-### 🗄️ **SQTP 协议 - RESTful 数据库查询**
-直接通过 HTTP 查询 SQLite 数据库，无需额外的 API 层：
+### 🗄️ **SQTP 协议 - 结构化数据库查询**
+通过自定义 HTTP 方法和头部直接查询 SQLite 数据库：
 
 ```bash
 # SELECT 查询
-curl "http://localhost:8080/SELECT%20*%20FROM%20users%20WHERE%20status='active'"
+curl -X SQTP-SELECT localhost:8080/db/main \
+  -H "FROM: users" \
+  -H "WHERE: status='active'"
 
 # 数据操作
-curl -X POST "http://localhost:8080/INSERT%20INTO%20users%20VALUES('Alice',25)"
+curl -X SQTP-INSERT localhost:8080/db/main \
+  -H "TABLE: users" \
+  -H "COLUMNS: name, age" \
+  -H "Content-Type: application/json" \
+  -d '["Alice", 25]'
 
 # JSON 响应，直接用于 JavaScript fetch()
 ```
@@ -34,7 +40,10 @@ curl -X POST "http://localhost:8080/INSERT%20INTO%20users%20VALUES('Alice',25)"
 **JavaScript 客户端:**
 ```javascript
 // 使用内置的 SQTP 客户端库
-const users = await sqtp.query("SELECT * FROM users WHERE age > 18");
+const users = await sqtp.select({
+  from: 'users',
+  where: 'age > 18'
+});
 users.forEach(user => console.log(user.name, user.age));
 ```
 
@@ -102,12 +111,17 @@ cmake -B build && cmake --build build  # CMake 构建
 
 **测试 SQTP 数据库查询:**
 ```bash
-# 创建表并插入数据
-curl -X POST "http://localhost:8080/CREATE%20TABLE%20users(name%20TEXT,age%20INT)"
-curl -X POST "http://localhost:8080/INSERT%20INTO%20users%20VALUES('Alice',25)"
+# 插入测试数据
+curl -X SQTP-INSERT localhost:8080/db/main \
+  -H "TABLE: users" \
+  -H "COLUMNS: name, age" \
+  -H "Content-Type: application/json" \
+  -d '["Alice", 25]'
 
 # 查询数据 (返回 JSON)
-curl "http://localhost:8080/SELECT%20*%20FROM%20users"
+curl -X SQTP-SELECT localhost:8080/db/main \
+  -H "FROM: users" \
+  -H "X-SQTP-View: object"
 ```
 
 🎉 **恭喜！** 您已成功运行了 WPP！
@@ -147,7 +161,10 @@ int main() {
 <script>
 // 前端实时数据库查询
 const loadUsers = async () => {
-    const users = await sqtp.query("SELECT * FROM users WHERE age > 18");
+    const users = await sqtp.select({
+        from: 'users',
+        where: 'age > 18'
+    });
     document.getElementById('users').innerHTML = 
         users.map(u => `<p>${u.name}: ${u.age}</p>`).join('');
 };
