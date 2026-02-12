@@ -1,7 +1,10 @@
 # WPP Project Makefile
 
 CC = gcc
-CFLAGS = -Wall -Wextra -O2 -Iinclude -Isrc -Ithird_party/tinycc/include -Ithird_party/tinycc -Ithird_party/uthash/include -Ithird_party/sqlite -Ithird_party/yyjson/src -Ithird_party/zlib
+# 默认 debug 模式（可断点调试）
+CFLAGS = -Wall -Wextra -g -O0 -Iinclude -Isrc -Ithird_party/tinycc/include -Ithird_party/tinycc -Ithird_party/uthash/include -Ithird_party/sqlite -Ithird_party/yyjson/src -Ithird_party/zlib
+# Release 模式优化选项
+CFLAGS_RELEASE = -Wall -Wextra -O2 -Iinclude -Isrc -Ithird_party/tinycc/include -Ithird_party/tinycc -Ithird_party/uthash/include -Ithird_party/sqlite -Ithird_party/yyjson/src -Ithird_party/zlib
 # 链接顺序：先 TCC，再其他库，最后系统库
 LDFLAGS = -Lthird_party/tinycc/build/compiler -ltcc -lm -ldl -lpthread
 
@@ -32,9 +35,27 @@ SRCS = $(wildcard $(SRC_DIR)/*.c)
 OBJS = $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(SRCS)) $(BUILD_DIR)/sysroot.o
 THIRD_PARTY_OBJS = $(BUILD_DIR)/sqlite3.o $(BUILD_DIR)/yyjson.o $(patsubst $(THIRD_PARTY)/zlib/%.c,$(BUILD_DIR)/zlib_%.o,$(ZLIB_SRCS))
 
-.PHONY: all clean buildins
+.PHONY: all clean buildins debug release stripped
 
-all: $(BUILD_DIR) buildins $(TARGET)
+# 默认目标：debug 版本（可断点调试）
+all: debug
+
+# Debug 版本（-g -O0，可断点调试）
+debug: $(BUILD_DIR) buildins $(TARGET)
+
+# Release 版本（-O2 优化）
+release: CFLAGS = $(CFLAGS_RELEASE)
+release: clean $(BUILD_DIR) buildins $(TARGET)
+	@echo "✓ Release build complete: $(TARGET)"
+	@ls -lh $(TARGET)
+
+# Stripped 版本（-O2 优化 + strip 符号表）
+stripped: CFLAGS = $(CFLAGS_RELEASE)
+stripped: clean $(BUILD_DIR) buildins $(TARGET)
+	@echo "Stripping debug symbols..."
+	@strip $(TARGET)
+	@echo "✓ Stripped build complete: $(TARGET)"
+	@ls -lh $(TARGET)
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
@@ -77,9 +98,18 @@ distclean: clean
 
 help:
 	@echo "WPP Project Build System"
+	@echo ""
 	@echo "Available targets:"
-	@echo "  all       - Build the project (default)"
+	@echo "  all       - Build debug version (default, -g -O0)"
+	@echo "  debug     - Build debug version (same as all)"
+	@echo "  release   - Build optimized version (-O2)"
+	@echo "  stripped  - Build optimized and stripped version (-O2 + strip)"
 	@echo "  buildins  - (Re)generate sysroot resources"
 	@echo "  clean     - Remove build artifacts"
 	@echo "  distclean - Remove everything including generated sysroot"
 	@echo "  help      - Show this help message"
+	@echo ""
+	@echo "Build modes:"
+	@echo "  debug    - Includes debug symbols, no optimization, for debugging"
+	@echo "  release  - Optimized for performance (-O2)"
+	@echo "  stripped - Optimized and stripped, smallest binary size"

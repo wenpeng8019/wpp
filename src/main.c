@@ -7,7 +7,7 @@
 #include <errno.h>
 #include <limits.h>
 #include <libtcc.h>
-#include <wpp/wpp.h>
+#include <sqlite3.h>
 #include <common.h>
 #include "httpd.h"
 #include "buildins.h"

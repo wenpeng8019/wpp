@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 3.10)
-project(WPP VERSION 0.1.0 LANGUAGES C)
+project(WPP VERSION 0.2.0 LANGUAGES C)
+
+# 设置默认构建类型为 Debug（可断点调试）
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Debug)
+endif()
 
 # 统一构建目录为 build/（兼容 CLion 和命令行）
 if(NOT CMAKE_BINARY_DIR MATCHES "build$")
@@ -10,19 +15,26 @@ endif()
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
-# 编译选项
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Wpedantic")
-set(CMAKE_C_FLAGS_DEBUG "-g -O0 -DDEBUG")
-set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG")
+# 编译选项 - 参照 Makefile 的配置
+set(CMAKE_C_FLAGS_DEBUG "-Wall -Wextra -g -O0 -DDEBUG")
+set(CMAKE_C_FLAGS_RELEASE "-Wall -Wextra -O2 -DNDEBUG")
+set(CMAKE_C_FLAGS_RELWITHDEBINFO "-Wall -Wextra -O2 -g -DNDEBUG")
+set(CMAKE_C_FLAGS_MINSIZEREL "-Wall -Wextra -O2 -DNDEBUG")
+
+# 包含目录（参照 Makefile 的 CFLAGS）
+include_directories(${CMAKE_SOURCE_DIR}/include)
+include_directories(${CMAKE_SOURCE_DIR}/src)
+include_directories(${CMAKE_SOURCE_DIR}/third_party/tinycc/include)
+include_directories(${CMAKE_SOURCE_DIR}/third_party/tinycc)
+include_directories(${CMAKE_SOURCE_DIR}/third_party/uthash/include)
+include_directories(${CMAKE_SOURCE_DIR}/third_party/sqlite)
+include_directories(${CMAKE_SOURCE_DIR}/third_party/yyjson/src)
+include_directories(${CMAKE_SOURCE_DIR}/third_party/zlib)
 
 # 选项
-option(WPP_BUILD_TESTS "Build tests" ON)
-option(WPP_BUILD_EXAMPLES "Build examples" ON)
+option(WPP_BUILD_TESTS "Build tests" OFF)
+option(WPP_BUILD_EXAMPLES "Build examples" OFF)
 option(WPP_BUILD_DOCS "Build documentation" OFF)
-
-# 包含目录
-include_directories(${CMAKE_SOURCE_DIR}/include)
-include_directories(${CMAKE_SOURCE_DIR}/third_party/uthash/include)
 
 # =============================================================================
 # SQLite 静态库
@@ -57,16 +69,14 @@ target_compile_definitions(sqlite3 PRIVATE
     SQLITE_DEFAULT_MEMSTATUS=0    # 禁用内存统计（提升性能）
     SQLITE_OMIT_DEPRECATED        # 省略已弃用的功能
     SQLITE_OMIT_PROGRESS_CALLBACK # 省略进度回调
-    # SQLITE_OMIT_SHARED_CACHE    # 需要共享缓存支持共享内存数据库
 )
 
-# SQLite 调试选项（用于学习和断点调试）
-target_compile_options(sqlite3 PRIVATE
-    -g                            # 生成调试符号
-    -O0                           # 禁用优化，便于单步调试
-    # -O3                         # 最高优化级别（已禁用）
-    # -DNDEBUG                    # 禁用断言（已禁用，保留断言用于学习）
-)
+# SQLite 根据构建类型调整编译优化
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    target_compile_options(sqlite3 PRIVATE -g -O0)
+else()
+    target_compile_options(sqlite3 PRIVATE -O2)
+endif()
 
 # 包含 SQLite 头文件目录
 target_include_directories(sqlite3 PUBLIC ${SQLITE_DIR})
@@ -82,9 +92,7 @@ endif()
 
 message(STATUS "SQLite Configuration:")
 message(STATUS "  Source: ${SQLITE_AMALGAMATION}")
-message(STATUS "  JSON support: Enabled")
-message(STATUS "  FTS5 support: Enabled")
-message(STATUS "  R-Tree support: Enabled")
+message(STATUS "  Build Type: ${CMAKE_BUILD_TYPE}")
 
 # =============================================================================
 # TinyCC 静态库
@@ -135,13 +143,18 @@ target_compile_definitions(tcc PRIVATE
     TCC_TARGET_MACHO          # macOS Mach-O 格式
 )
 
-# TinyCC 调试选项（用于学习和断点调试）
-target_compile_options(tcc PRIVATE
-    -g                        # 生成调试符号
-    -O0                       # 禁用优化，便于单步调试
-    -Wno-unused-parameter     # 忽略未使用参数警告
-    -Wno-sign-compare         # 忽略符号比较警告
-)
+# TinyCC 根据构建类型调整编译优化  
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    target_compile_options(tcc PRIVATE 
+        -g -O0
+        -Wno-unused-parameter -Wno-sign-compare
+    )
+else()
+    target_compile_options(tcc PRIVATE 
+        -O2
+        -Wno-unused-parameter -Wno-sign-compare
+    )
+endif()
 
 # 包含 TinyCC 头文件目录
 target_include_directories(tcc PUBLIC ${TCC_DIR})
@@ -154,9 +167,8 @@ elseif(UNIX)
 endif()
 
 message(STATUS "TinyCC Configuration:")
-message(STATUS "  Source files: ${TCC_DIR}/*.c")
 message(STATUS "  Architecture: ${CMAKE_SYSTEM_PROCESSOR}")
-message(STATUS "  Mode: Static library (source build)")
+message(STATUS "  Build Type: ${CMAKE_BUILD_TYPE}")
 
 # =============================================================================
 # yyjson 静态库
@@ -177,23 +189,19 @@ endif()
 # 创建 yyjson 静态库
 add_library(yyjson STATIC ${YYJSON_SOURCE})
 
-# yyjson 编译选项
-target_compile_definitions(yyjson PRIVATE
-    # 可以添加 yyjson 特定的编译选项
-)
-
-# yyjson 调试选项（用于学习和断点调试）
-target_compile_options(yyjson PRIVATE
-    -g                        # 生成调试符号
-    -O0                       # 禁用优化，便于单步调试
-)
+# yyjson 根据构建类型调整编译优化
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    target_compile_options(yyjson PRIVATE -g -O0)
+else()
+    target_compile_options(yyjson PRIVATE -O2)
+endif()
 
 # 包含 yyjson 头文件目录
 target_include_directories(yyjson PUBLIC ${YYJSON_DIR}/src)
 
 message(STATUS "yyjson Configuration:")
 message(STATUS "  Source: ${YYJSON_SOURCE}")
-message(STATUS "  Mode: Static library (source build)")
+message(STATUS "  Build Type: ${CMAKE_BUILD_TYPE}")
 
 # =============================================================================
 # zlib 静态库
@@ -220,25 +228,25 @@ set(ZLIB_SOURCES
 # 创建 zlib 静态库
 add_library(zlib STATIC ${ZLIB_SOURCES})
 
-# zlib 编译选项
-target_compile_definitions(zlib PRIVATE
-    # zlib 默认配置即可
-)
-
-# zlib 调试选项（用于学习和断点调试）
-target_compile_options(zlib PRIVATE
-    -g                        # 生成调试符号
-    -O0                       # 禁用优化，便于单步调试
-    -Wno-implicit-fallthrough # 忽略 switch fallthrough 警告
-)
+# zlib 根据构建类型调整编译优化
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    target_compile_options(zlib PRIVATE 
+        -g -O0
+        -Wno-implicit-fallthrough
+    )
+else()
+    target_compile_options(zlib PRIVATE 
+        -O2
+        -Wno-implicit-fallthrough
+    )
+endif()
 
 # 包含 zlib 头文件目录
 target_include_directories(zlib PUBLIC ${ZLIB_DIR})
 
 message(STATUS "zlib Configuration:")
 message(STATUS "  Source: ${ZLIB_DIR}/*.c")
-message(STATUS "  Mode: Static library (source build)")
-message(STATUS "  Version: 1.3.1")
+message(STATUS "  Build Type: ${CMAKE_BUILD_TYPE}")
 
 # =============================================================================
 # OpenSSL（用于 TLS 支持）
@@ -246,8 +254,7 @@ message(STATUS "  Version: 1.3.1")
 
 # 根据平台设置 OpenSSL 搜索路径
 if(APPLE)
-    # macOS: Homebrew OpenSSL 路径
-    # 支持 Apple Silicon (arm64) 和 Intel (x86_64)
+    # macOS: Homebrew OpenSSL 路径 
     if(EXISTS /opt/homebrew/opt/openssl@3)
         set(OPENSSL_ROOT_DIR /opt/homebrew/opt/openssl@3)
     elseif(EXISTS /usr/local/opt/openssl@3)
@@ -259,9 +266,6 @@ if(APPLE)
     endif()
 elseif(UNIX)
     # Linux: 通常在系统标准路径中
-    # Ubuntu/Debian: /usr/include/openssl, /usr/lib/x86_64-linux-gnu/
-    # CentOS/RHEL: /usr/include/openssl, /usr/lib64/
-    # find_package 会自动搜索这些标准路径
 endif()
 
 # 查找 OpenSSL
@@ -274,15 +278,6 @@ if(OPENSSL_FOUND)
     message(STATUS "  Libraries: ${OPENSSL_LIBRARIES}")
 else()
     message(WARNING "OpenSSL not found. TLS support will be disabled.")
-    if(APPLE)
-        message(WARNING "To install OpenSSL on macOS:")
-        message(WARNING "  brew install openssl@3")
-    elseif(UNIX)
-        message(WARNING "To install OpenSSL on Linux:")
-        message(WARNING "  Ubuntu/Debian: sudo apt-get install libssl-dev")
-        message(WARNING "  CentOS/RHEL:   sudo yum install openssl-devel")
-        message(WARNING "  Arch Linux:    sudo pacman -S openssl")
-    endif()
 endif()
 
 # =============================================================================
@@ -295,13 +290,12 @@ set(BUILDINS_HEADERS ${CMAKE_SOURCE_DIR}/src/buildins/sysroot.h)
 set(BUILDINS_SCRIPT ${CMAKE_SOURCE_DIR}/tools/make_buildins.sh)
 set(BUILDINS_DIR ${CMAKE_SOURCE_DIR}/buildins)
 
-# 添加自定义命令：生成 BUILDINS 资源
-# 当 buildins 目录下的文件变化时，自动重新生成
+# 查找 buildins 目录下的所有文件
 file(GLOB_RECURSE BUILDINS_INPUT_FILES 
-    ${BUILDINS_DIR}/include/*.h
-    ${BUILDINS_DIR}/lib/*
+    ${BUILDINS_DIR}/*
 )
 
+# 添加自定义命令：生成 BUILDINS 资源
 add_custom_command(
     OUTPUT ${BUILDINS_SOURCES} ${BUILDINS_HEADERS}
     COMMAND bash ${BUILDINS_SCRIPT}
@@ -324,6 +318,7 @@ message(STATUS "  Output: ${BUILDINS_SOURCES}, ${BUILDINS_HEADERS}")
 # 主程序
 # =============================================================================
 
+# 主程序源文件（参照 Makefile）
 add_executable(wpp 
     src/main.c
     src/common.c
@@ -345,12 +340,15 @@ if(OPENSSL_FOUND)
     target_include_directories(wpp PRIVATE ${OPENSSL_INCLUDE_DIR})
 endif()
 
-# 链接 SQLite、TinyCC、yyjson、zlib 和 OpenSSL 库
+# 链接库（参照 Makefile 的 LDFLAGS 顺序：先 TCC，再其他库，最后系统库）
 target_link_libraries(wpp 
-    sqlite3
     tcc
+    sqlite3
     yyjson
     zlib
+    m
+    dl
+    pthread
 )
 
 # 链接 OpenSSL
@@ -358,22 +356,54 @@ if(OPENSSL_FOUND)
     target_link_libraries(wpp ${OPENSSL_LIBRARIES})
 endif()
 
-# 注意：althttpd.c 包含 main 函数，暂不直接编译
-# 后续可以将其编译为独立的可执行文件或修改为库
+# 设置输出目录到 build/ （参照 Makefile）
+set_target_properties(wpp PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/build
+)
+
+# =============================================================================
+# 自定义构建目标（参照 Makefile）
+# =============================================================================
+
+# Debug 目标（默认）
+add_custom_target(debug
+    COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --config Debug
+    COMMENT "Building debug version (可断点调试)"
+)
+
+# Release 目标
+add_custom_target(release
+    COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --config Release
+    COMMENT "Building release version (O2 optimized)"
+)
+
+# Stripped 目标 (Release + strip)
+add_custom_target(stripped
+    COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --config Release
+    COMMAND strip ${CMAKE_SOURCE_DIR}/build/wpp
+    COMMENT "Building stripped version (O2 + stripped)"
+)
+
+# Build Help 目标
+add_custom_target(build_help
+    COMMAND echo "Available build targets:"
+    COMMAND echo "  debug     - Debug version with symbols (default)"
+    COMMAND echo "  release   - Release version with O2 optimization"
+    COMMAND echo "  stripped  - Release version with symbols stripped"
+    COMMAND echo ""
+    COMMAND echo "Build examples:"
+    COMMAND echo "  cmake --build . --target debug"  
+    COMMAND echo "  cmake --build . --target release"
+    COMMAND echo "  cmake --build . --target stripped"
+    VERBATIM
+)
+
+message(STATUS "WPP Project Configuration:")
+message(STATUS "  Version: ${PROJECT_VERSION}")
+message(STATUS "  Build Type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "  Output: ${CMAKE_SOURCE_DIR}/build/wpp")
+message(STATUS "  Available Targets: debug (default), release, stripped")
 
 # 安装规则
 install(TARGETS wpp DESTINATION bin)
-install(DIRECTORY include/wpp DESTINATION include)
-
-# 文档
-if(WPP_BUILD_DOCS)
-    find_package(Doxygen)
-    if(DOXYGEN_FOUND)
-        add_custom_target(docs
-            COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_SOURCE_DIR}/Doxyfile
-            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-            COMMENT "Generating API documentation"
-        )
-    endif()
-endif()
 
